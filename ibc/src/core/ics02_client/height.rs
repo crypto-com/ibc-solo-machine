@@ -5,6 +5,10 @@ use cosmos_sdk_proto::ibc::core::client::v1::Height;
 pub trait IHeight: Sized {
     fn new(revision_number: u64, revision_height: u64) -> Self;
 
+    fn zero() -> Self {
+        Self::new(0, 0)
+    }
+
     fn is_zero(&self) -> bool;
 
     fn checked_add(self, rhs: u64) -> Option<Self>;

@@ -4,6 +4,8 @@ use std::{
     path::PathBuf,
 };
 
+use prost_build::Config;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut files = Vec::new();
 
@@ -13,9 +15,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         files.extend(get_files(path?)?);
     }
 
+    let mut config = Config::default();
+    config.protoc_arg("--experimental_allow_proto3_optional");
+
     tonic_build::configure()
         .build_client(false)
-        .compile(&files, &["proto".into()])?;
+        .compile_with_config(config, &files, &["proto".into()])?;
 
     Ok(())
 }

@@ -5,6 +5,7 @@ use anyhow::{ensure, Error};
 use cosmos_sdk_proto::ibc::core::commitment::v1::MerklePrefix;
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::core::ics02_client::client_type::ClientType;
 
@@ -17,7 +18,7 @@ const VALID_ID_PATTERN: &str = r"^[a-zA-Z0-9\._\+\-\#\[\]<>]+$";
 macro_rules! impl_id {
     ($doc: expr, $name: ident, $min_len: expr) => {
         #[doc = $doc]
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct $name(Identifier);
 
         impl FromStr for $name {
@@ -34,6 +35,12 @@ macro_rules! impl_id {
         impl From<$name> for String {
             fn from(value: $name) -> Self {
                 value.0.into()
+            }
+        }
+
+        impl AsRef<[u8]> for $name {
+            fn as_ref(&self) -> &[u8] {
+                self.0.as_ref()
             }
         }
 
@@ -73,7 +80,7 @@ impl ConnectionId {
 }
 
 /// A chain identifier
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChainId {
     id: Identifier,
     version: u64,
@@ -106,6 +113,12 @@ impl FromStr for ChainId {
     }
 }
 
+impl AsRef<[u8]> for ChainId {
+    fn as_ref(&self) -> &[u8] {
+        self.id.as_ref()
+    }
+}
+
 impl fmt::Display for ChainId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.id)
@@ -131,7 +144,7 @@ impl Deref for ChainId {
 /// # Specs
 ///
 /// <https://github.com/cosmos/ibc/tree/master/spec/core/ics-024-host-requirements#paths-identifiers-separators>
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Identifier(String);
 
 impl Identifier {

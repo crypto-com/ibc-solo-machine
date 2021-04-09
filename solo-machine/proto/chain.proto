@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package chain;
+
+import "google/protobuf/duration.proto";
+
+service Chain {
+    // Adds a IBC enabled chain to storage
+    rpc Add (AddChainRequest) returns (AddChainResponse);
+
+    // Fetches IBC enabled chain details
+    rpc Query (QueryChainRequest) returns (QueryChainResponse);
+}
+
+message AddChainRequest {
+    // gRPC address of IBC enabled chain
+    optional string grpc_addr = 1;
+    // RPC address of IBC enabled chain
+    optional string rpc_addr = 2;
+    // Account address prefix of IBC enabled chain
+    optional string account_prefix = 3;
+    // Fee configuration of chain
+    FeeConfig fee_config = 4;
+    // Trust level of IBC enabled chain
+    optional string trust_level = 5;
+    // Duration of the period since the LastestTimestamp during which the submitted headers are valid for upgrade
+    google.protobuf.Duration trusting_period = 6;
+    // Defines how much new (untrusted) header's time can drift into the future.
+    google.protobuf.Duration max_clock_drift = 7;
+    // Light client RPC timeout
+    google.protobuf.Duration rpc_timeout = 8;
+}
+
+message AddChainResponse {
+    // Chain ID of added chain
+    string chain_id = 1;
+}
+
+message FeeConfig {
+    // Fee amount to be used in each cosmos sdk transaction
+    optional string fee_amount = 1;
+    // Fee denom to be used in each cosmos sdk transaction
+    optional string fee_denom = 2;
+    // Gas limit to be used in each cosmos sdk transaction
+    optional string gas_limit = 3;
+}
+
+message QueryChainRequest {
+    // Chain ID
+    string chain_id = 1;
+}
+
+message QueryChainResponse {
+    // Chain ID
+    string chain_id = 1;
+    // Node ID of peer
+    string node_id = 2;
+    // gRPC address of IBC enabled chain
+    string grpc_addr = 3;
+    // RPC address of IBC enabled chain
+    string rpc_addr = 4;
+    // Account address prefix of IBC enabled chain
+    string account_prefix = 5;
+    // Fee configuration of chain
+    FeeConfig fee_config = 6;
+    // Trust level of IBC enabled chain
+    string trust_level = 7;
+    // Duration of the period since the LastestTimestamp during which the submitted headers are valid for upgrade
+    google.protobuf.Duration trusting_period = 8;
+    // Defines how much new (untrusted) header's time can drift into the future.
+    google.protobuf.Duration max_clock_drift = 9;
+    // Light client RPC timeout
+    google.protobuf.Duration rpc_timeout = 10;
+}

@@ -1,7 +1,9 @@
 mod command;
 mod crypto;
+mod handler;
 mod server;
 mod service;
+mod transaction_builder;
 
 use anyhow::Result;
 use structopt::StructOpt;

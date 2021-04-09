@@ -8,19 +8,30 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.40"
+cosmos-sdk-proto = "0.4.0"
 env_logger = "0.8.3"
 ibc = { path = "../ibc" }
 k256 = { version = "0.7.2", features = ["ecdsa", "sha256"] }
 log = "0.4.14"
+num-rational = { version = "0.4.0", features = ["serde"] }
 prost = "0.7.0"
 prost-types = "0.7.0"
 rust_decimal = "1.10.3"
+rust_decimal_macros = "1.10.3"
+serde = "1.0.125"
+serde_cbor = "0.11.1"
+serde_json = "1.0.64"
 sled = "0.34.6"
 structopt = "0.3.21"
+tendermint = "0.19.0"
+tendermint-light-client = "0.19.0"
+tendermint-rpc = { version = "0.19.0", features = ["http-client", "websocket-client"] }
+time = "0.2.26"
 tiny-bip39 = "0.8.0"
 tiny-hderive = "0.3.0"
 tokio = { version = "1.4.0", features = ["rt-multi-thread"] }
 tonic = "0.4.1"
 
 [build-dependencies]
+prost-build = "0.7.0"
 tonic-build = "0.4.1"

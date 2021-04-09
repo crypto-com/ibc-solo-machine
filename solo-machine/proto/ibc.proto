@@ -7,6 +7,15 @@ service Ibc {
     rpc Connect (ConnectRequest) returns (ConnectResponse);
 }
 
-message ConnectRequest {}
+message ConnectRequest {
+    // Chain ID of IBC enabled chain to connect to
+    string chain_id = 1;
+    // Mnemonic phrase
+    string mnemonic = 2;
+    // Memo value to be used in cosmos sdk transaction
+    optional string memo = 3;
+    // Diversifier to be used in IBC transaction
+    optional string diversifier = 4;
+}
 
 message ConnectResponse {}

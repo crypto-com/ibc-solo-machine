@@ -4,12 +4,17 @@ use anyhow::{Context, Result};
 use sled::{Db, Tree};
 use tonic::transport::Server as GrpcServer;
 
-use crate::service::{
-    bank::{bank_server::BankServer, BankService},
-    ibc::{ibc_server::IbcServer, IbcService},
+use crate::{
+    handler::msg_handler::SoloMachineMsgHandler,
+    service::{
+        bank::{bank_server::BankServer, BankService},
+        chain::{chain_server::ChainServer, ChainService},
+        ibc::{ibc_server::IbcServer, IbcService},
+    },
 };
 
 const BALANCES_TREE: &str = "balances";
+const CHAINS_TREE: &str = "chains";
 const IBC_TREE: &str = "ibc";
 
 pub struct Server {
@@ -29,13 +34,17 @@ impl Server {
 
     /// Starts grpc services
     pub async fn start(&self, addr: SocketAddr) -> Result<()> {
+        let msg_handler = SoloMachineMsgHandler::new(self.ibc_tree()?);
+
         let bank_service = BankService::new(self.balances_tree()?);
-        let ibc_service = IbcService::new(self.ibc_tree()?);
+        let chain_service = ChainService::new(self.chains_tree()?);
+        let ibc_service = IbcService::new(msg_handler, chain_service.clone());
 
         log::info!("starting grpc server at {}", addr);
 
         GrpcServer::builder()
             .add_service(BankServer::new(bank_service))
+            .add_service(ChainServer::new(chain_service))
             .add_service(IbcServer::new(ibc_service))
             .serve(addr)
             .await
@@ -47,6 +56,13 @@ impl Server {
         self.db
             .open_tree(BALANCES_TREE)
             .context("unable to open balances storage tree")
+    }
+
+    /// Returns chains tree of storage
+    fn chains_tree(&self) -> Result<Tree> {
+        self.db
+            .open_tree(CHAINS_TREE)
+            .context("unable to open chains storage tree")
     }
 
     /// Returns ibc tree of storage

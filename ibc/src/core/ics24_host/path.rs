@@ -131,6 +131,12 @@ macro_rules! impl_path {
             }
         }
 
+        impl AsRef<[u8]> for $name {
+            fn as_ref(&self) -> &[u8] {
+                self.0.as_ref()
+            }
+        }
+
         impl Deref for $name {
             type Target = Path;
 
@@ -177,7 +183,7 @@ impl_path!("Path for storing consensus state", ConsensusStatePath);
 
 impl ConsensusStatePath {
     /// Creates a new consensus state path from client id and height
-    pub fn new(client_id: &ClientId, height: Height) -> Self {
+    pub fn new(client_id: &ClientId, height: &Height) -> Self {
         Self(
             format!(
                 "clients{}{}{}consensusStates{}{}",
