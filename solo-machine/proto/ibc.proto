@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package ibc;
+
+service Ibc {
+    // Attempts to establish a connection to an IBC enabled chain
+    rpc Connect (ConnectRequest) returns (ConnectResponse);
+}
+
+message ConnectRequest {}
+
+message ConnectResponse {}

@@ -1,3 +1,5 @@
+tonic::include_proto!("bank");
+
 use std::str::FromStr;
 
 use anyhow::{anyhow, ensure, Context, Error};
@@ -10,13 +12,9 @@ use sled::{
 };
 use tonic::{Request, Response, Status};
 
-use crate::{
-    crypto::Crypto,
-    service::bank::{
-        bank_server::Bank, BurnRequest, BurnResponse, MintRequest, MintResponse,
-        QueryBalanceRequest, QueryBalanceResponse,
-    },
-};
+use crate::crypto::Crypto;
+
+use self::bank_server::Bank;
 
 pub struct BankService {
     tree: Tree,

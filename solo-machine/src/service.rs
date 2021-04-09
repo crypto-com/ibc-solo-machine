@@ -1,3 +1,2 @@
-pub mod bank {
-    tonic::include_proto!("bank");
-}
+pub mod bank;
+pub mod ibc;

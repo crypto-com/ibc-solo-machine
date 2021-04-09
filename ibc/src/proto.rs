@@ -63,33 +63,3 @@ macro_rules! impl_any_conversion {
         }
     };
 }
-
-// macro_rules! impl_any_conversion {
-//     ($type: ty, $type_url: ident) => {
-//         impl ::std::convert::TryFrom<&$type> for ::prost_types::Any {
-//             type Error = ::anyhow::Error;
-
-//             fn try_from(value: &$type) -> ::std::result::Result<Self, Self::Error> {
-//                 Ok(Self {
-//                     type_url: $type_url.to_owned(),
-//                     value: $crate::proto::proto_encode(value)?,
-//                 })
-//             }
-//         }
-
-//         impl ::std::convert::TryFrom<&::prost_types::Any> for $type {
-//             type Error = ::anyhow::Error;
-
-//             fn try_from(value: &::prost_types::Any) -> ::std::result::Result<Self, Self::Error> {
-//                 ::anyhow::ensure!(
-//                     value.type_url == $type_url,
-//                     "invalid type url for `Any` type: expected `{}` and found `{}`",
-//                     $type_url,
-//                     value.type_url
-//                 );
-
-//                 <Self as ::prost::Message>::decode(value.value.as_slice())
-//             }
-//         }
-//     };
-// }

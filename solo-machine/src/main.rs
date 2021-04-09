@@ -1,4 +1,3 @@
-mod bank_service;
 mod command;
 mod crypto;
 mod server;
