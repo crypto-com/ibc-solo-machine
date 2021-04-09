@@ -7,3 +7,20 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.40"
+env_logger = "0.8.3"
+ibc = { path = "../ibc" }
+k256 = { version = "0.7.2", features = ["ecdsa", "sha256"] }
+log = "0.4.14"
+prost = "0.7.0"
+prost-types = "0.7.0"
+rust_decimal = "1.10.3"
+sled = "0.34.6"
+structopt = "0.3.21"
+tiny-bip39 = "0.8.0"
+tiny-hderive = "0.3.0"
+tokio = { version = "1.4.0", features = ["rt-multi-thread"] }
+tonic = "0.4.1"
+
+[build-dependencies]
+tonic-build = "0.4.1"

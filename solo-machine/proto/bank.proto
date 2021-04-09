@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package bank;
+
+service Bank {
+    // Mint some tokens
+    rpc Mint (MintRequest) returns (MintResponse);
+
+    // Burn some tokens
+    rpc Burn (BurnRequest) returns (BurnResponse);
+
+    // Query balance of a denom
+    rpc QueryBalance (QueryBalanceRequest) returns (QueryBalanceResponse);
+}
+
+message MintRequest {
+    // Amount of tokens to be minted
+    string amount = 1;
+    // Denom of tokens to be minted
+    string denom = 2;
+    // Mnemonic of account
+    string mnemonic = 3;
+    // bech32 account prefix
+    string account_prefix = 4;
+}
+
+message MintResponse {}
+
+message BurnRequest {
+    // Amount of tokens to be burnt
+    string amount = 1;
+    // Denom of tokens to be burnt
+    string denom = 2;
+    // Mnemonic of account
+    string mnemonic = 3;
+    // bech32 account prefix
+    string account_prefix = 4;
+}
+
+message BurnResponse {}
+
+message QueryBalanceRequest {
+    // Denom of tokens
+    string denom = 1;
+    // Mnemonic of account
+    string mnemonic = 2;
+    // bech32 account prefix
+    string account_prefix = 4;
+}
+
+message QueryBalanceResponse {
+    // Current balance of tokens
+    string balance = 1;
+    // Denom of tokens
+    string denom = 2;
+}
