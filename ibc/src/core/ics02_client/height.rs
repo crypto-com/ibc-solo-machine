@@ -21,7 +21,7 @@ pub trait IHeight: Sized {
 
     fn to_string(&self) -> String;
 
-    fn to_block_height(self) -> Result<BlockHeight, Error>;
+    fn to_block_height(&self) -> Result<BlockHeight, Error>;
 }
 
 impl IHeight for Height {
@@ -68,7 +68,7 @@ impl IHeight for Height {
         format!("{}-{}", self.revision_number, self.revision_height)
     }
 
-    fn to_block_height(self) -> Result<BlockHeight, Error> {
+    fn to_block_height(&self) -> Result<BlockHeight, Error> {
         BlockHeight::try_from(self.revision_height)
             .map_err(|e| anyhow!("invalid block height: {}", e))
     }

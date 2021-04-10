@@ -35,7 +35,7 @@ use ibc::{
 use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
 use prost_types::Duration;
-use tendermint::block::Header;
+use tendermint::block::{Header, Height as BlockHeight};
 use tendermint_light_client::{
     components::io::{AtHeight, Io, ProdIo},
     light_client::LightClient,
@@ -126,7 +126,7 @@ impl TransactionBuilder {
             allow_update_after_misbehaviour: false,
         };
 
-        let header = self.get_header(light_client, light_client_io, latest_height)?;
+        let header = self.get_header(light_client, light_client_io, &latest_height)?;
         let consensus_state = TendermintConsensusState::from_header(header);
 
         Ok((client_state, consensus_state))
@@ -300,11 +300,11 @@ impl TransactionBuilder {
         &self,
         light_client: &LightClient,
         light_client_io: &ProdIo,
-        height: Height,
+        height: &Height,
     ) -> Result<Header> {
-        let mut state = self.get_light_client_state(light_client_io, height.clone())?;
-
-        let light_block = light_client.verify_to_target(height.to_block_height()?, &mut state)?;
+        let height = height.to_block_height()?;
+        let mut state = self.get_light_client_state(light_client_io, height)?;
+        let light_block = light_client.verify_to_target(height, &mut state)?;
 
         Ok(light_block.signed_header.header)
     }
@@ -312,10 +312,9 @@ impl TransactionBuilder {
     fn get_light_client_state(
         &self,
         light_client_io: &ProdIo,
-        height: Height,
+        height: BlockHeight,
     ) -> Result<LightClientState> {
-        let trusted_height = height.to_block_height()?;
-        let trusted_block = light_client_io.fetch_light_block(AtHeight::At(trusted_height))?;
+        let trusted_block = light_client_io.fetch_light_block(AtHeight::At(height))?;
 
         let mut store = MemoryStore::new();
         store.insert(trusted_block, Status::Trusted);
