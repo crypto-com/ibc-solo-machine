@@ -1057,6 +1057,7 @@ dependencies = [
  "ripemd160",
  "serde",
  "sha2 0.9.3",
+ "tendermint",
  "tonic",
  "tonic-build",
 ]

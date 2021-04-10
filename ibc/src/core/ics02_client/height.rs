@@ -1,6 +1,8 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, convert::TryFrom};
 
+use anyhow::{anyhow, Error};
 use cosmos_sdk_proto::ibc::core::client::v1::Height;
+use tendermint::block::Height as BlockHeight;
 
 pub trait IHeight: Sized {
     fn new(revision_number: u64, revision_height: u64) -> Self;
@@ -18,6 +20,8 @@ pub trait IHeight: Sized {
     fn cmp(&self, other: &Self) -> Ordering;
 
     fn to_string(&self) -> String;
+
+    fn to_block_height(self) -> Result<BlockHeight, Error>;
 }
 
 impl IHeight for Height {
@@ -62,5 +66,10 @@ impl IHeight for Height {
 
     fn to_string(&self) -> String {
         format!("{}-{}", self.revision_number, self.revision_height)
+    }
+
+    fn to_block_height(self) -> Result<BlockHeight, Error> {
+        BlockHeight::try_from(self.revision_height)
+            .map_err(|e| anyhow!("invalid block height: {}", e))
     }
 }

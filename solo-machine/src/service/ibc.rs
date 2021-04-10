@@ -63,6 +63,7 @@ where
 
         let rpc_client = HttpClient::new(chain.rpc_addr.as_str())?;
         let light_client = prepare_light_client(&chain, rpc_client.clone());
+        let light_client_io = prepare_light_client_io(&chain, rpc_client.clone());
         let transaction_builder = TransactionBuilder::new(chain, mnemonic, memo);
 
         let solo_machine_client_id = self
@@ -70,7 +71,12 @@ where
             .await?;
 
         let tendermint_client_id = self
-            .create_tendermint_client(&rpc_client, &light_client, &transaction_builder)
+            .create_tendermint_client(
+                &rpc_client,
+                &light_client,
+                &light_client_io,
+                &transaction_builder,
+            )
             .await?;
 
         Ok(())
@@ -102,13 +108,14 @@ where
         &self,
         rpc_client: &C,
         light_client: &LightClient,
+        light_client_io: &ProdIo,
         transaction_builder: &TransactionBuilder,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
     {
         let (client_state, consensus_state) = transaction_builder
-            .msg_create_tendermint_client(rpc_client, light_client)
+            .msg_create_tendermint_client(rpc_client, light_client, light_client_io)
             .await?;
 
         self.msg_handler
@@ -213,6 +220,10 @@ fn prepare_light_client(chain: &Chain, rpc_client: HttpClient) -> LightClient {
         basic_bisecting_schedule,
         ProdVerifier::default(),
         ProdHasher,
-        ProdIo::new(chain.node_id, rpc_client, Some(chain.rpc_timeout)),
+        prepare_light_client_io(chain, rpc_client),
     )
+}
+
+fn prepare_light_client_io(chain: &Chain, rpc_client: HttpClient) -> ProdIo {
+    ProdIo::new(chain.node_id, rpc_client, Some(chain.rpc_timeout))
 }

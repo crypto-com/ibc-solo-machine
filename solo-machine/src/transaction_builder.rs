@@ -27,15 +27,22 @@ use cosmos_sdk_proto::{
 };
 use ibc::{
     core::{
-        ics02_client::height::IHeight, ics23_vector_commitments::proof_specs,
-        ics24_host::identifier::ChainId,
+        ics02_client::height::IHeight, ics07_tendermint::consensus_state::IConsensusState,
+        ics23_vector_commitments::proof_specs, ics24_host::identifier::ChainId,
     },
     proto::{proto_encode, AnyConvert},
 };
 use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
 use prost_types::Duration;
-use tendermint_light_client::light_client::LightClient;
+use tendermint::block::Header;
+use tendermint_light_client::{
+    components::io::{AtHeight, Io, ProdIo},
+    light_client::LightClient,
+    state::State as LightClientState,
+    store::{memory::MemoryStore, LightStore},
+    types::Status,
+};
 use tendermint_rpc::Client;
 use time::OffsetDateTime;
 
@@ -92,6 +99,7 @@ impl TransactionBuilder {
         &self,
         rpc_client: &C,
         light_client: &LightClient,
+        light_client_io: &ProdIo,
     ) -> Result<(TendermintClientState, TendermintConsensusState)>
     where
         C: Client + Send + Sync,
@@ -102,7 +110,7 @@ impl TransactionBuilder {
         });
 
         let unbonding_period = Some(self.get_unbonding_period().await?);
-        let latest_height = Some(self.get_latest_height(rpc_client).await?);
+        let latest_height = self.get_latest_height(rpc_client).await?;
 
         let client_state = TendermintClientState {
             chain_id: self.chain.id.to_string(),
@@ -111,14 +119,15 @@ impl TransactionBuilder {
             unbonding_period,
             max_clock_drift: Some(self.chain.max_clock_drift.into()),
             frozen_height: Some(Height::zero()),
-            latest_height,
+            latest_height: Some(latest_height.clone()),
             proof_specs: proof_specs(),
             upgrade_path: vec!["upgrade".to_string(), "upgradedIBCState".to_string()],
             allow_update_after_expiry: false,
             allow_update_after_misbehaviour: false,
         };
 
-        let consensus_state = todo!();
+        let header = self.get_header(light_client, light_client_io, latest_height)?;
+        let consensus_state = TendermintConsensusState::from_header(header);
 
         Ok((client_state, consensus_state))
     }
@@ -285,5 +294,32 @@ impl TransactionBuilder {
             revision_number,
             revision_height,
         })
+    }
+
+    fn get_header(
+        &self,
+        light_client: &LightClient,
+        light_client_io: &ProdIo,
+        height: Height,
+    ) -> Result<Header> {
+        let mut state = self.get_light_client_state(light_client_io, height.clone())?;
+
+        let light_block = light_client.verify_to_target(height.to_block_height()?, &mut state)?;
+
+        Ok(light_block.signed_header.header)
+    }
+
+    fn get_light_client_state(
+        &self,
+        light_client_io: &ProdIo,
+        height: Height,
+    ) -> Result<LightClientState> {
+        let trusted_height = height.to_block_height()?;
+        let trusted_block = light_client_io.fetch_light_block(AtHeight::At(trusted_height))?;
+
+        let mut store = MemoryStore::new();
+        store.insert(trusted_block, Status::Trusted);
+
+        Ok(LightClientState::new(store))
     }
 }
