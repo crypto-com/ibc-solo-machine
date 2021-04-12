@@ -12,26 +12,16 @@ use ibc::{
 };
 use sled::Tree;
 
-pub trait MsgHandler {
-    fn create_client(
-        &self,
-        client_state: &ClientState,
-        consensus_state: &ConsensusState,
-    ) -> Result<ClientId>;
-}
-
-pub struct SoloMachineMsgHandler {
+pub struct MsgHandler {
     tree: Tree,
 }
 
-impl SoloMachineMsgHandler {
+impl MsgHandler {
     pub fn new(tree: Tree) -> Self {
         Self { tree }
     }
-}
 
-impl MsgHandler for SoloMachineMsgHandler {
-    fn create_client(
+    pub fn create_client(
         &self,
         client_state: &ClientState,
         consensus_state: &ConsensusState,

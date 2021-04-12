@@ -10,7 +10,7 @@ use cosmos_sdk_proto::ibc::core::{client::v1::Height, commitment::v1::MerklePath
 
 use crate::core::ics02_client::height::IHeight;
 
-use super::identifier::{ClientId, Identifier};
+use super::identifier::{ClientId, ConnectionId, Identifier};
 
 pub(crate) const PATH_SEPARATOR: char = '/';
 
@@ -195,6 +195,18 @@ impl ConsensusStatePath {
             )
             .parse()
             .unwrap(),
+        )
+    }
+}
+
+impl_path!("Path for storing connection", ConnectionPath);
+
+impl ConnectionPath {
+    pub fn new(connection_id: &ConnectionId) -> Self {
+        Self(
+            format!("connections{}{}", PATH_SEPARATOR, connection_id)
+                .parse()
+                .unwrap(),
         )
     }
 }

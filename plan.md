@@ -76,6 +76,11 @@ client on IBC enabled chain and a tendermint client on IBC enabled solo-machine.
     - Store `client_state` in `private_store`
     - Store `consensus_state` in `provable_store`
 
+    > Implementation note:
+    >
+    > For solo machine, we do not need two different stores, i.e., `private_store` and `provable_store`. Current
+    > implementation only uses one store (non-provable).
+
 ### Connection creation
 
 To establish a connection between IBC enabled chain and solo-machine, we need to send multiple messages to both, IBC
@@ -155,6 +160,14 @@ To establish connection on both sides:
     >
     > Before sending `MsgConnectionOpenTry` to `IbcTxHandler`, we need to update tendermint client on solo-machine to the
     > target height (`proof_height`) using `MsgUpdateClient`. [code](https://github.com/informalsystems/ibc-rs/blob/1c72c281939e37187919161ab8791cebd3d572e7/relayer/src/connection.rs#L518)
+
+    After `IbcTxHandler` receives `MsgConnectionOpenTry`:
+
+    - Generate a new `connection_id` (if there is a `previous_connection_id`, we need to do some extra step which are
+      not done in current implementation)
+    - Fetch current `block_height` of solo machine (`current_block_height`) and return error if `consensus_height` is
+      greater than or equal to `current_block_height`.
+    - 
 
 1. `MsgConnectionOpenAck`:
 

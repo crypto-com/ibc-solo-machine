@@ -32,17 +32,14 @@ use super::chain::{Chain, ChainService};
 const DEFAULT_MEMO: &str = "solo-machine-memo";
 const DEFAULT_DIVERSIFIER: &str = "solo-machine-diversifier";
 
-pub struct IbcService<M> {
-    msg_handler: M,
+pub struct IbcService {
+    msg_handler: MsgHandler,
     chain_service: ChainService,
 }
 
-impl<M> IbcService<M>
-where
-    M: MsgHandler + Send + Sync + 'static,
-{
+impl IbcService {
     /// Creates a new instance of ibc service
-    pub fn new(msg_handler: M, chain_service: ChainService) -> Self {
+    pub fn new(msg_handler: MsgHandler, chain_service: ChainService) -> Self {
         Self {
             msg_handler,
             chain_service,
@@ -124,10 +121,7 @@ where
 }
 
 #[tonic::async_trait]
-impl<M> Ibc for IbcService<M>
-where
-    M: MsgHandler + Send + Sync + 'static,
-{
+impl Ibc for IbcService {
     async fn connect(
         &self,
         request: Request<ConnectRequest>,

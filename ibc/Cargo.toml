@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.40"
 bech32 = "0.8.0"
-cosmos-sdk-proto = "0.4.0"
+cosmos-sdk-proto = "0.5.0"
 ed25519-dalek = "1.0.1"
 hex = "0.4.3"
 k256 = { version = "0.7.2", features = ["ecdsa", "sha256"] }

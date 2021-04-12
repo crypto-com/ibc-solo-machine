@@ -127,7 +127,7 @@ impl TransactionBuilder {
         };
 
         let header = self.get_header(light_client, light_client_io, &latest_height)?;
-        let consensus_state = TendermintConsensusState::from_header(header);
+        let consensus_state = TendermintConsensusState::from_block_header(header);
 
         Ok((client_state, consensus_state))
     }

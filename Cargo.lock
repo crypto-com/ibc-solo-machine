@@ -332,9 +332,9 @@ checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 
 [[package]]
 name = "cosmos-sdk-proto"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a3d43556929de8529674fae0a6ed42e157cf4eb5bd6b79f96ead5bd55970757"
+checksum = "78f4841c74e806ccb9198968db8312355830751a3e9849789c328692a65e4c6a"
 dependencies = [
  "prost",
  "prost-types",
