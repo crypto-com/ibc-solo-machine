@@ -1,6 +1,6 @@
 tonic::include_proto!("ibc");
 
-use anyhow::{anyhow, ensure, Error};
+use anyhow::{anyhow, ensure, Context, Error};
 use bip39::{Language, Mnemonic};
 use ibc::{
     core::ics24_host::identifier::{ChainId, ClientId, ConnectionId},
@@ -9,14 +9,6 @@ use ibc::{
 use tendermint::abci::{
     responses::Event,
     tag::{Key, Tag},
-};
-use tendermint_light_client::{
-    components::{
-        clock::SystemClock, io::ProdIo, scheduler::basic_bisecting_schedule, verifier::ProdVerifier,
-    },
-    light_client::{LightClient, Options},
-    operations::hasher::ProdHasher,
-    types::TrustThreshold,
 };
 use tendermint_rpc::{
     endpoint::broadcast::tx_commit::Response as TxCommitResponse, Client, HttpClient,
@@ -30,7 +22,7 @@ use crate::{
 
 use self::ibc_server::Ibc;
 
-use super::chain::{Chain, ChainService};
+use super::chain::ChainService;
 
 const DEFAULT_MEMO: &str = "solo-machine-memo";
 
@@ -65,23 +57,21 @@ impl IbcService {
             .get(&chain_id)?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
-        let rpc_client = HttpClient::new(chain.rpc_addr.as_str())?;
-        let light_client = prepare_light_client(&chain, rpc_client.clone());
-        let light_client_io = prepare_light_client_io(&chain, rpc_client.clone());
+        let rpc_client =
+            HttpClient::new(chain.rpc_addr.as_str()).context("unable to connect to rpc client")?;
         let transaction_builder = TransactionBuilder::new(chain, mnemonic, memo);
 
         let solo_machine_client_id = self
             .create_solo_machine_client(&rpc_client, &transaction_builder)
             .await?;
 
+        log::info!("Created solo machine client: {}", solo_machine_client_id);
+
         let tendermint_client_id = self
-            .create_tendermint_client(
-                &rpc_client,
-                &light_client,
-                &light_client_io,
-                &transaction_builder,
-            )
+            .create_tendermint_client(&rpc_client, &transaction_builder)
             .await?;
+
+        log::info!("Created tendermint client: {}", tendermint_client_id);
 
         let solo_machine_connection_id = self
             .connection_open_init(
@@ -92,11 +82,21 @@ impl IbcService {
             )
             .await?;
 
+        log::info!(
+            "Initialized solo machine connection: {}",
+            solo_machine_connection_id
+        );
+
         let tendermint_connection_id = self.msg_handler.connection_open_try(
             &tendermint_client_id,
             &solo_machine_client_id,
             &solo_machine_connection_id,
         )?;
+
+        log::info!(
+            "Initialized tendermint connection: {}",
+            tendermint_connection_id
+        );
 
         self.connection_open_ack(
             &rpc_client,
@@ -107,8 +107,12 @@ impl IbcService {
         )
         .await?;
 
+        log::info!("Sent connection open acknowledgement");
+
         self.msg_handler
             .connection_open_confirm(&tendermint_connection_id)?;
+
+        log::info!("Send connection open confirmation");
 
         Ok(())
     }
@@ -135,15 +139,13 @@ impl IbcService {
     async fn create_tendermint_client<C>(
         &self,
         rpc_client: &C,
-        light_client: &LightClient,
-        light_client_io: &ProdIo,
         transaction_builder: &TransactionBuilder,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
     {
         let (client_state, consensus_state) = transaction_builder
-            .msg_create_tendermint_client(rpc_client, light_client, light_client_io)
+            .msg_create_tendermint_client(rpc_client)
             .await?;
 
         self.msg_handler
@@ -228,7 +230,7 @@ impl Ibc for IbcService {
 
         self.connect(chain_id, mnemonic, memo)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
         Ok(Response::new(Default::default()))
     }
@@ -283,26 +285,26 @@ fn get_attribute(tags: &[Tag], key: &str) -> Result<String, Error> {
     Err(anyhow!("{} not found in tags: {:?}", key, tags))
 }
 
-fn prepare_light_client(chain: &Chain, rpc_client: HttpClient) -> LightClient {
-    LightClient::new(
-        chain.node_id,
-        Options {
-            trust_threshold: TrustThreshold::new(
-                *chain.trust_level.numer(),
-                *chain.trust_level.denom(),
-            )
-            .unwrap(),
-            trusting_period: chain.trusting_period,
-            clock_drift: chain.max_clock_drift,
-        },
-        SystemClock,
-        basic_bisecting_schedule,
-        ProdVerifier::default(),
-        ProdHasher,
-        prepare_light_client_io(chain, rpc_client),
-    )
-}
+// fn prepare_light_client(chain: &Chain, rpc_client: HttpClient) -> LightClient {
+//     LightClient::new(
+//         chain.node_id,
+//         Options {
+//             trust_threshold: TrustThreshold::new(
+//                 *chain.trust_level.numer(),
+//                 *chain.trust_level.denom(),
+//             )
+//             .unwrap(),
+//             trusting_period: chain.trusting_period,
+//             clock_drift: chain.max_clock_drift,
+//         },
+//         SystemClock,
+//         basic_bisecting_schedule,
+//         ProdVerifier::default(),
+//         ProdHasher,
+//         prepare_light_client_io(chain, rpc_client),
+//     )
+// }
 
-fn prepare_light_client_io(chain: &Chain, rpc_client: HttpClient) -> ProdIo {
-    ProdIo::new(chain.node_id, rpc_client, Some(chain.rpc_timeout))
-}
+// fn prepare_light_client_io(chain: &Chain, rpc_client: HttpClient) -> ProdIo {
+//     ProdIo::new(chain.node_id, rpc_client, Some(chain.rpc_timeout))
+// }

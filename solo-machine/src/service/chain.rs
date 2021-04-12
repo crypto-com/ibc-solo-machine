@@ -19,10 +19,10 @@ use tonic::{Request, Response, Status};
 
 use self::chain_server::Chain as IChain;
 
-const DEFAULT_ACCOUNT_PREFIX: &str = "stake";
+const DEFAULT_ACCOUNT_PREFIX: &str = "cosmos";
 const DEFAULT_DIVERSIFIER: &str = "solo-machine-diversifier";
-const DEFAULT_GRPC_ADDR: &str = "http://localhost:9090";
-const DEFAULT_RPC_ADDR: &str = "localhost:26657";
+const DEFAULT_GRPC_ADDR: &str = "http://0.0.0.0:9090";
+const DEFAULT_RPC_ADDR: &str = "http://0.0.0.0:26657";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chain {
@@ -92,7 +92,7 @@ impl ChainService {
         rpc_timeout: Duration,
         diversifier: String,
     ) -> Result<ChainId> {
-        let tendermint_client = HttpClient::new(format!("http://{}", rpc_addr).as_str())?;
+        let tendermint_client = HttpClient::new(rpc_addr.as_str())?;
         let status = tendermint_client.status().await?;
 
         let chain_id: ChainId = status.node_info.network.to_string().parse()?;
@@ -194,7 +194,7 @@ impl IChain for ChainService {
             .map(Duration::try_from)
             .transpose()
             .map_err(|_| Status::invalid_argument("negative rpc_timeout"))?
-            .unwrap_or_else(|| Duration::from_secs(10));
+            .unwrap_or_else(|| Duration::from_secs(60));
 
         let diversifier = request
             .diversifier

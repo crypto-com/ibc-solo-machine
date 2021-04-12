@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::Path};
+use std::{net::SocketAddr, path::Path, time::Duration};
 
 use anyhow::{Context, Result};
 use sled::{Db, Tree};
@@ -44,6 +44,7 @@ impl Server {
         log::info!("starting grpc server at {}", addr);
 
         GrpcServer::builder()
+            .timeout(Duration::from_secs(60))
             .add_service(BankServer::new(bank_service))
             .add_service(ChainServer::new(chain_service))
             .add_service(IbcServer::new(ibc_service))

@@ -11,7 +11,7 @@ pub enum Command {
     /// Starts the gRPC server
     Start {
         /// gRPC server address
-        #[structopt(short, long, env = "SOLO_ADDR", default_value = "127.0.0.1:9000")]
+        #[structopt(short, long, env = "SOLO_ADDR", default_value = "0.0.0.0:9000")]
         addr: SocketAddr,
         /// Path to storage directory
         #[structopt(short, long, env = "SOLO_STORAGE", default_value = ".solo-machine")]

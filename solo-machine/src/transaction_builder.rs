@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use anyhow::{anyhow, ensure, Context, Result};
 use bip39::Mnemonic;
 use cosmos_sdk_proto::{
@@ -57,13 +59,6 @@ use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
 use prost_types::Duration;
 use tendermint::block::{Header, Height as BlockHeight};
-use tendermint_light_client::{
-    components::io::{AtHeight, Io, ProdIo},
-    light_client::LightClient,
-    state::State as LightClientState,
-    store::{memory::MemoryStore, LightStore},
-    types::Status,
-};
 use tendermint_rpc::Client;
 
 use crate::{crypto::Crypto, handler::query_handler::QueryHandler, service::chain::Chain};
@@ -115,8 +110,6 @@ impl TransactionBuilder {
     pub async fn msg_create_tendermint_client<C>(
         &self,
         rpc_client: &C,
-        light_client: &LightClient,
-        light_client_io: &ProdIo,
     ) -> Result<(TendermintClientState, TendermintConsensusState)>
     where
         C: Client + Send + Sync,
@@ -143,7 +136,7 @@ impl TransactionBuilder {
             allow_update_after_misbehaviour: false,
         };
 
-        let header = self.get_header(light_client, light_client_io, &latest_height)?;
+        let header = self.get_header(rpc_client, &latest_height).await?;
         let consensus_state = TendermintConsensusState::from_block_header(header);
 
         Ok((client_state, consensus_state))
@@ -212,7 +205,7 @@ impl TransactionBuilder {
                 &self.mnemonic,
                 &tendermint_client_id,
             )?,
-            consensus_height: Some(Height::new(0, 1)),
+            consensus_height: tendermint_client_state.latest_height,
             signer: self.mnemonic.account_address(&self.chain.account_prefix)?,
         };
 
@@ -383,31 +376,42 @@ impl TransactionBuilder {
         })
     }
 
-    fn get_header(
-        &self,
-        light_client: &LightClient,
-        light_client_io: &ProdIo,
-        height: &Height,
-    ) -> Result<Header> {
-        let height = height.to_block_height()?;
-        let mut state = self.get_light_client_state(light_client_io, height)?;
-        let light_block = light_client.verify_to_target(height, &mut state)?;
+    async fn get_header<C>(&self, rpc_client: &C, height: &Height) -> Result<Header>
+    where
+        C: Client + Send + Sync,
+    {
+        let response = rpc_client
+            .block(BlockHeight::try_from(height.revision_height).map_err(|e| anyhow!("{}", e))?)
+            .await?;
 
-        Ok(light_block.signed_header.header)
+        Ok(response.block.header)
     }
 
-    fn get_light_client_state(
-        &self,
-        light_client_io: &ProdIo,
-        height: BlockHeight,
-    ) -> Result<LightClientState> {
-        let trusted_block = light_client_io.fetch_light_block(AtHeight::At(height))?;
+    // fn get_header(
+    //     &self,
+    //     light_client: &LightClient,
+    //     light_client_io: &ProdIo,
+    //     height: &Height,
+    // ) -> Result<Header> {
+    //     let height = height.to_block_height()?;
+    //     let mut state = self.get_light_client_state(light_client_io, height)?;
+    //     let light_block = light_client.verify_to_target(height, &mut state)?;
 
-        let mut store = MemoryStore::new();
-        store.insert(trusted_block, Status::Trusted);
+    //     Ok(light_block.signed_header.header)
+    // }
 
-        Ok(LightClientState::new(store))
-    }
+    // fn get_light_client_state(
+    //     &self,
+    //     light_client_io: &ProdIo,
+    //     height: BlockHeight,
+    // ) -> Result<LightClientState> {
+    //     let trusted_block = light_client_io.fetch_light_block(AtHeight::At(height))?;
+
+    //     let mut store = MemoryStore::new();
+    //     store.insert(trusted_block, Status::Trusted);
+
+    //     Ok(LightClientState::new(store))
+    // }
 }
 
 fn get_connection_proof(
@@ -527,7 +531,7 @@ fn sign(chain: &Chain, mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec
     let signature_data = SignatureData {
         sum: Some(SignatureDataInner::Single(SingleSignatureData {
             signature: signature_bytes,
-            mode: SignMode::Direct.into(),
+            mode: SignMode::Unspecified.into(),
         })),
     };
 
