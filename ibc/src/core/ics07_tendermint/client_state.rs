@@ -44,3 +44,7 @@ impl IClientState for ClientState {
         Ok((self, consensus_state))
     }
 }
+
+const TYPE_URL: &str = "/ibc.lightclients.tendermint.v1.ClientState";
+
+impl_any_conversion!(ClientState, TYPE_URL);

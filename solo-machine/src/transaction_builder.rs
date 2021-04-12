@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use anyhow::{anyhow, ensure, Context, Result};
 use bip39::Mnemonic;
 use cosmos_sdk_proto::{
@@ -9,15 +7,33 @@ use cosmos_sdk_proto::{
         },
         base::v1beta1::Coin,
         staking::v1beta1::{query_client::QueryClient as StakingQueryClient, QueryParamsRequest},
-        tx::v1beta1::{
-            mode_info::{Single, Sum},
-            AuthInfo, Fee, ModeInfo, SignDoc, SignerInfo, TxBody, TxRaw,
+        tx::{
+            signing::v1beta1::{
+                signature_descriptor::{
+                    data::{Single as SingleSignatureData, Sum as SignatureDataInner},
+                    Data as SignatureData,
+                },
+                SignMode,
+            },
+            v1beta1::{
+                mode_info::{Single, Sum},
+                AuthInfo, Fee, ModeInfo, SignDoc, SignerInfo, TxBody, TxRaw,
+            },
         },
     },
     ibc::{
-        core::client::v1::{Height, MsgCreateClient},
+        core::{
+            client::v1::{Height, MsgCreateClient},
+            commitment::v1::MerklePrefix,
+            connection::v1::{
+                Counterparty as ConnectionCounterparty, MsgConnectionOpenAck,
+                MsgConnectionOpenInit, Version as ConnectionVersion,
+            },
+        },
         lightclients::solomachine::v1::{
-            ClientState as SoloMachineClientState, ConsensusState as SoloMachineConsensusState,
+            ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
+            ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType, SignBytes,
+            TimestampedSignatureData,
         },
         lightclients::tendermint::v1::{
             ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
@@ -27,8 +43,13 @@ use cosmos_sdk_proto::{
 };
 use ibc::{
     core::{
-        ics02_client::height::IHeight, ics07_tendermint::consensus_state::IConsensusState,
-        ics23_vector_commitments::proof_specs, ics24_host::identifier::ChainId,
+        ics02_client::height::IHeight,
+        ics07_tendermint::consensus_state::IConsensusState,
+        ics23_vector_commitments::proof_specs,
+        ics24_host::{
+            identifier::{ChainId, ClientId, ConnectionId},
+            path::{ClientStatePath, ConnectionPath, ConsensusStatePath},
+        },
     },
     proto::{proto_encode, AnyConvert},
 };
@@ -44,9 +65,8 @@ use tendermint_light_client::{
     types::Status,
 };
 use tendermint_rpc::Client;
-use time::OffsetDateTime;
 
-use crate::{crypto::Crypto, service::chain::Chain};
+use crate::{crypto::Crypto, handler::query_handler::QueryHandler, service::chain::Chain};
 
 pub struct TransactionBuilder {
     chain: Chain,
@@ -64,16 +84,13 @@ impl TransactionBuilder {
     }
 
     /// Builds a transaction to create a solo machine client on IBC enabled chain
-    pub async fn msg_create_solo_machine_client(&self, diversifier: String) -> Result<TxRaw> {
+    pub async fn msg_create_solo_machine_client(&self) -> Result<TxRaw> {
         let any_public_key = self.mnemonic.to_public_key()?.to_any()?;
 
         let consensus_state = SoloMachineConsensusState {
             public_key: Some(any_public_key),
-            diversifier,
-            timestamp: OffsetDateTime::now_utc()
-                .unix_timestamp()
-                .try_into()
-                .context("unable to convert unix timestamp to u64")?,
+            diversifier: self.chain.diversifier.clone(),
+            timestamp: self.chain.consensus_timestamp,
         };
         let any_consensus_state = consensus_state.to_any()?;
 
@@ -130,6 +147,76 @@ impl TransactionBuilder {
         let consensus_state = TendermintConsensusState::from_block_header(header);
 
         Ok((client_state, consensus_state))
+    }
+
+    pub async fn msg_connection_open_init(
+        &self,
+        solo_machine_client_id: &ClientId,
+        tendermint_client_id: &ClientId,
+    ) -> Result<TxRaw> {
+        let message = MsgConnectionOpenInit {
+            client_id: solo_machine_client_id.to_string(),
+            counterparty: Some(ConnectionCounterparty {
+                client_id: tendermint_client_id.to_string(),
+                connection_id: "".to_string(),
+                prefix: Some(MerklePrefix {
+                    key_prefix: "ibc".as_bytes().to_vec(),
+                }),
+            }),
+            version: Some(ConnectionVersion {
+                identifier: "1".to_string(),
+                features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
+            }),
+            delay_period: 0,
+            signer: self.mnemonic.account_address(&self.chain.account_prefix)?,
+        };
+
+        self.build(&[message]).await
+    }
+
+    pub async fn msg_connection_open_ack(
+        &self,
+        query_handler: &QueryHandler,
+        solo_machine_connection_id: &ConnectionId,
+        tendermint_client_id: &ClientId,
+        tendermint_connection_id: &ConnectionId,
+    ) -> Result<TxRaw> {
+        let tendermint_client_state = query_handler
+            .get_client_state(tendermint_client_id)?
+            .ok_or_else(|| anyhow!("client for client id {} not found", tendermint_client_id))?;
+
+        let message = MsgConnectionOpenAck {
+            connection_id: solo_machine_connection_id.to_string(),
+            counterparty_connection_id: tendermint_connection_id.to_string(),
+            version: Some(ConnectionVersion {
+                identifier: "1".to_string(),
+                features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
+            }),
+            client_state: Some(tendermint_client_state.to_any()?),
+            proof_height: Some(Height::new(0, 1)),
+            proof_try: get_connection_proof(
+                &self.chain,
+                query_handler,
+                &self.mnemonic,
+                tendermint_connection_id,
+            )?,
+            proof_client: get_client_proof(
+                &self.chain,
+                query_handler,
+                &self.mnemonic,
+                &tendermint_client_id,
+            )?,
+            proof_consensus: get_consensus_proof(
+                &self.chain,
+                query_handler,
+                &self.mnemonic,
+                &tendermint_client_id,
+            )?,
+            consensus_height: Some(Height::new(0, 1)),
+            signer: self.mnemonic.account_address(&self.chain.account_prefix)?,
+        };
+
+        self.build(&[message]).await
     }
 
     async fn build<T>(&self, messages: &[T]) -> Result<TxRaw>
@@ -321,4 +408,135 @@ impl TransactionBuilder {
 
         Ok(LightClientState::new(store))
     }
+}
+
+fn get_connection_proof(
+    chain: &Chain,
+    query_handler: &QueryHandler,
+    mnemonic: &Mnemonic,
+    connection_id: &ConnectionId,
+) -> Result<Vec<u8>> {
+    let connection = query_handler
+        .get_connection(connection_id)?
+        .ok_or_else(|| anyhow!("connection with id {} not found", connection_id))?;
+
+    let mut connection_path = ConnectionPath::new(connection_id);
+    connection_path.apply_prefix("ibc".parse().unwrap());
+
+    let connection_state_data = ConnectionStateData {
+        path: connection_path.into_bytes(),
+        connection: Some(connection),
+    };
+
+    let connection_state_data_bytes = proto_encode(&connection_state_data)?;
+
+    let sign_bytes = SignBytes {
+        sequence: 1,
+        timestamp: chain.consensus_timestamp,
+        diversifier: chain.diversifier.to_owned(),
+        data_type: DataType::ConnectionState.into(),
+        data: connection_state_data_bytes,
+    };
+
+    sign(chain, mnemonic, sign_bytes)
+}
+
+fn get_client_proof(
+    chain: &Chain,
+    query_handler: &QueryHandler,
+    mnemonic: &Mnemonic,
+    client_id: &ClientId,
+) -> Result<Vec<u8>> {
+    let client_state = query_handler
+        .get_client_state(client_id)?
+        .ok_or_else(|| anyhow!("client with id {} not found", client_id))?
+        .to_any()?;
+
+    let mut client_state_path = ClientStatePath::new(client_id);
+    client_state_path.apply_prefix("ibc".parse().unwrap());
+
+    let client_state_data = ClientStateData {
+        path: client_state_path.into_bytes(),
+        client_state: Some(client_state),
+    };
+
+    let client_state_data_bytes = proto_encode(&client_state_data)?;
+
+    let sign_bytes = SignBytes {
+        sequence: 1,
+        timestamp: chain.consensus_timestamp,
+        diversifier: chain.diversifier.to_owned(),
+        data_type: DataType::ClientState.into(),
+        data: client_state_data_bytes,
+    };
+
+    sign(chain, mnemonic, sign_bytes)
+}
+
+fn get_consensus_proof(
+    chain: &Chain,
+    query_handler: &QueryHandler,
+    mnemonic: &Mnemonic,
+    client_id: &ClientId,
+) -> Result<Vec<u8>> {
+    let client_state = query_handler
+        .get_client_state(client_id)?
+        .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
+
+    let height = client_state
+        .latest_height
+        .ok_or_else(|| anyhow!("client state does not contain latest height"))?;
+
+    let consensus_state = query_handler
+        .get_consensus_state(client_id, &height)?
+        .ok_or_else(|| {
+            anyhow!(
+                "consensus state with id {} and height {} not found",
+                client_id,
+                height.to_string(),
+            )
+        })?
+        .to_any()?;
+
+    let mut consensus_state_path = ConsensusStatePath::new(client_id, &height);
+    consensus_state_path.apply_prefix("ibc".parse().unwrap());
+
+    let consensus_state_data = ConsensusStateData {
+        path: consensus_state_path.into_bytes(),
+        consensus_state: Some(consensus_state),
+    };
+
+    let consensus_state_data_bytes = proto_encode(&consensus_state_data)?;
+
+    let sign_bytes = SignBytes {
+        sequence: 1,
+        timestamp: chain.consensus_timestamp,
+        diversifier: chain.diversifier.to_owned(),
+        data_type: DataType::ConsensusState.into(),
+        data: consensus_state_data_bytes,
+    };
+
+    sign(chain, mnemonic, sign_bytes)
+}
+
+fn sign(chain: &Chain, mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec<u8>> {
+    let sign_bytes = proto_encode(&sign_bytes)?;
+    let signature: Signature = mnemonic.to_signing_key()?.sign(&sign_bytes);
+    let signature_bytes: Vec<u8> = signature.as_ref().to_vec();
+
+    let signature_data = SignatureData {
+        sum: Some(SignatureDataInner::Single(SingleSignatureData {
+            signature: signature_bytes,
+            mode: SignMode::Direct.into(),
+        })),
+    };
+
+    let signature_data_bytes = proto_encode(&signature_data)?;
+
+    let timestamped_signature_data = TimestampedSignatureData {
+        signature_data: signature_data_bytes,
+        timestamp: chain.consensus_timestamp,
+    };
+
+    proto_encode(&timestamped_signature_data)
 }

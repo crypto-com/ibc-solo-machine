@@ -1,8 +1,11 @@
 tonic::include_proto!("chain");
 
-use std::{convert::TryFrom, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use ibc::core::ics24_host::identifier::ChainId;
 use num_rational::{ParseRatioError, Ratio};
 use rust_decimal::Decimal;
@@ -11,13 +14,15 @@ use serde::{Deserialize, Serialize};
 use sled::Tree;
 use tendermint::node::Id as NodeId;
 use tendermint_rpc::{Client, HttpClient};
+use time::OffsetDateTime;
 use tonic::{Request, Response, Status};
 
 use self::chain_server::Chain as IChain;
 
+const DEFAULT_ACCOUNT_PREFIX: &str = "stake";
+const DEFAULT_DIVERSIFIER: &str = "solo-machine-diversifier";
 const DEFAULT_GRPC_ADDR: &str = "http://localhost:9090";
 const DEFAULT_RPC_ADDR: &str = "localhost:26657";
-const DEFAULT_ACCOUNT_PREFIX: &str = "stake";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chain {
@@ -31,6 +36,8 @@ pub struct Chain {
     pub trusting_period: Duration,
     pub max_clock_drift: Duration,
     pub rpc_timeout: Duration,
+    pub diversifier: String,
+    pub consensus_timestamp: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,12 +90,18 @@ impl ChainService {
         trusting_period: Duration,
         max_clock_drift: Duration,
         rpc_timeout: Duration,
+        diversifier: String,
     ) -> Result<ChainId> {
         let tendermint_client = HttpClient::new(format!("http://{}", rpc_addr).as_str())?;
         let status = tendermint_client.status().await?;
 
         let chain_id: ChainId = status.node_info.network.to_string().parse()?;
         let node_id: NodeId = status.node_info.id;
+
+        let consensus_timestamp = OffsetDateTime::now_utc()
+            .unix_timestamp()
+            .try_into()
+            .context("unable to convert unix timestamp to u64")?;
 
         let chain = Chain {
             id: chain_id.clone(),
@@ -101,6 +114,8 @@ impl ChainService {
             trusting_period,
             max_clock_drift,
             rpc_timeout,
+            diversifier,
+            consensus_timestamp,
         };
 
         self.tree.insert(&chain_id, serde_cbor::to_vec(&chain)?)?;
@@ -181,6 +196,10 @@ impl IChain for ChainService {
             .map_err(|_| Status::invalid_argument("negative rpc_timeout"))?
             .unwrap_or_else(|| Duration::from_secs(10));
 
+        let diversifier = request
+            .diversifier
+            .unwrap_or_else(|| DEFAULT_DIVERSIFIER.to_string());
+
         let chain_id = self
             .add(
                 grpc_addr,
@@ -191,6 +210,7 @@ impl IChain for ChainService {
                 trusting_period,
                 max_clock_drift,
                 rpc_timeout,
+                diversifier,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -232,6 +252,7 @@ impl IChain for ChainService {
             trusting_period: Some(chain.trusting_period.into()),
             max_clock_drift: Some(chain.max_clock_drift.into()),
             rpc_timeout: Some(chain.rpc_timeout.into()),
+            diversifier: chain.diversifier.to_string(),
         };
 
         Ok(Response::new(response))

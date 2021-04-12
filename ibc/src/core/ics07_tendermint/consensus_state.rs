@@ -44,3 +44,7 @@ impl IConsensusState for ConsensusState {
         }
     }
 }
+
+const TYPE_URL: &str = "/ibc.lightclients.tendermint.v1.ConsensusState";
+
+impl_any_conversion!(ConsensusState, TYPE_URL);

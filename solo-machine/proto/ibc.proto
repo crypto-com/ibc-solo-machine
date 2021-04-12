@@ -14,8 +14,6 @@ message ConnectRequest {
     string mnemonic = 2;
     // Memo value to be used in cosmos sdk transaction
     optional string memo = 3;
-    // Diversifier to be used in IBC transaction
-    optional string diversifier = 4;
 }
 
 message ConnectResponse {}

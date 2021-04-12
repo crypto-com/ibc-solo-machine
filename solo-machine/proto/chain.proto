@@ -29,6 +29,8 @@ message AddChainRequest {
     google.protobuf.Duration max_clock_drift = 7;
     // Light client RPC timeout
     google.protobuf.Duration rpc_timeout = 8;
+    // Diversifier for solo machine
+    optional string diversifier = 9;
 }
 
 message AddChainResponse {
@@ -71,4 +73,6 @@ message QueryChainResponse {
     google.protobuf.Duration max_clock_drift = 9;
     // Light client RPC timeout
     google.protobuf.Duration rpc_timeout = 10;
+    // Diversifier for solo machine
+    string diversifier = 11;
 }

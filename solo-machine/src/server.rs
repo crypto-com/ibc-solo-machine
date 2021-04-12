@@ -5,7 +5,7 @@ use sled::{Db, Tree};
 use tonic::transport::Server as GrpcServer;
 
 use crate::{
-    handler::msg_handler::MsgHandler,
+    handler::{msg_handler::MsgHandler, query_handler::QueryHandler},
     service::{
         bank::{bank_server::BankServer, BankService},
         chain::{chain_server::ChainServer, ChainService},
@@ -35,10 +35,11 @@ impl Server {
     /// Starts grpc services
     pub async fn start(&self, addr: SocketAddr) -> Result<()> {
         let msg_handler = MsgHandler::new(self.ibc_tree()?);
+        let query_handler = QueryHandler::new(self.ibc_tree()?);
 
         let bank_service = BankService::new(self.balances_tree()?);
         let chain_service = ChainService::new(self.chains_tree()?);
-        let ibc_service = IbcService::new(msg_handler, chain_service.clone());
+        let ibc_service = IbcService::new(msg_handler, query_handler, chain_service.clone());
 
         log::info!("starting grpc server at {}", addr);
 

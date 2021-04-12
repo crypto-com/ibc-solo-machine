@@ -1,7 +1,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     str::FromStr,
 };
 
@@ -29,6 +29,11 @@ impl Path {
     /// Applies the given prefix to path
     pub fn apply_prefix(&mut self, prefix: Identifier) {
         self.identifiers.insert(0, prefix);
+    }
+
+    /// Returns bytes of current path
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.path.into_bytes()
     }
 }
 
@@ -125,6 +130,12 @@ macro_rules! impl_path {
         #[doc = $doc]
         pub struct $name(Path);
 
+        impl $name {
+            pub fn into_bytes(self) -> Vec<u8> {
+                self.0.into_bytes()
+            }
+        }
+
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{}", self.0)
@@ -142,6 +153,12 @@ macro_rules! impl_path {
 
             fn deref(&self) -> &Self::Target {
                 &self.0
+            }
+        }
+
+        impl DerefMut for $name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
             }
         }
     };

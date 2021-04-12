@@ -3,7 +3,7 @@ tonic::include_proto!("ibc");
 use anyhow::{anyhow, ensure, Error};
 use bip39::{Language, Mnemonic};
 use ibc::{
-    core::ics24_host::identifier::{ChainId, ClientId},
+    core::ics24_host::identifier::{ChainId, ClientId, ConnectionId},
     proto::proto_encode,
 };
 use tendermint::abci::{
@@ -23,25 +23,33 @@ use tendermint_rpc::{
 };
 use tonic::{Request, Response, Status};
 
-use crate::{handler::msg_handler::MsgHandler, transaction_builder::TransactionBuilder};
+use crate::{
+    handler::{msg_handler::MsgHandler, query_handler::QueryHandler},
+    transaction_builder::TransactionBuilder,
+};
 
 use self::ibc_server::Ibc;
 
 use super::chain::{Chain, ChainService};
 
 const DEFAULT_MEMO: &str = "solo-machine-memo";
-const DEFAULT_DIVERSIFIER: &str = "solo-machine-diversifier";
 
 pub struct IbcService {
     msg_handler: MsgHandler,
+    query_handler: QueryHandler,
     chain_service: ChainService,
 }
 
 impl IbcService {
     /// Creates a new instance of ibc service
-    pub fn new(msg_handler: MsgHandler, chain_service: ChainService) -> Self {
+    pub fn new(
+        msg_handler: MsgHandler,
+        query_handler: QueryHandler,
+        chain_service: ChainService,
+    ) -> Self {
         Self {
             msg_handler,
+            query_handler,
             chain_service,
         }
     }
@@ -51,7 +59,6 @@ impl IbcService {
         chain_id: ChainId,
         mnemonic: Mnemonic,
         memo: String,
-        diversifier: String,
     ) -> Result<(), Error> {
         let chain = self
             .chain_service
@@ -64,7 +71,7 @@ impl IbcService {
         let transaction_builder = TransactionBuilder::new(chain, mnemonic, memo);
 
         let solo_machine_client_id = self
-            .create_solo_machine_client(&rpc_client, &transaction_builder, diversifier)
+            .create_solo_machine_client(&rpc_client, &transaction_builder)
             .await?;
 
         let tendermint_client_id = self
@@ -76,6 +83,33 @@ impl IbcService {
             )
             .await?;
 
+        let solo_machine_connection_id = self
+            .connection_open_init(
+                &rpc_client,
+                &transaction_builder,
+                &solo_machine_client_id,
+                &tendermint_client_id,
+            )
+            .await?;
+
+        let tendermint_connection_id = self.msg_handler.connection_open_try(
+            &tendermint_client_id,
+            &solo_machine_client_id,
+            &solo_machine_connection_id,
+        )?;
+
+        self.connection_open_ack(
+            &rpc_client,
+            &transaction_builder,
+            &solo_machine_connection_id,
+            &tendermint_client_id,
+            &tendermint_connection_id,
+        )
+        .await?;
+
+        self.msg_handler
+            .connection_open_confirm(&tendermint_connection_id)?;
+
         Ok(())
     }
 
@@ -83,14 +117,11 @@ impl IbcService {
         &self,
         rpc_client: &C,
         transaction_builder: &TransactionBuilder,
-        diversifier: String,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
     {
-        let msg = transaction_builder
-            .msg_create_solo_machine_client(diversifier)
-            .await?;
+        let msg = transaction_builder.msg_create_solo_machine_client().await?;
 
         let response = rpc_client
             .broadcast_tx_commit(proto_encode(&msg)?.into())
@@ -118,6 +149,63 @@ impl IbcService {
         self.msg_handler
             .create_client(&client_state, &consensus_state)
     }
+
+    async fn connection_open_init<C>(
+        &self,
+        rpc_client: &C,
+        transaction_builder: &TransactionBuilder,
+        solo_machine_client_id: &ClientId,
+        tendermint_client_id: &ClientId,
+    ) -> Result<ConnectionId, Error>
+    where
+        C: Client + Send + Sync,
+    {
+        let msg = transaction_builder
+            .msg_connection_open_init(solo_machine_client_id, tendermint_client_id)
+            .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        extract_attribute(
+            &response.deliver_tx.events,
+            "connection_open_init",
+            "connection_id",
+        )?
+        .parse()
+    }
+
+    async fn connection_open_ack<C>(
+        &self,
+        rpc_client: &C,
+        transaction_builder: &TransactionBuilder,
+        solo_machine_connection_id: &ConnectionId,
+        tendermint_client_id: &ClientId,
+        tendermint_connection_id: &ConnectionId,
+    ) -> Result<(), Error>
+    where
+        C: Client + Send + Sync,
+    {
+        let msg = transaction_builder
+            .msg_connection_open_ack(
+                &self.query_handler,
+                solo_machine_connection_id,
+                tendermint_client_id,
+                tendermint_connection_id,
+            )
+            .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
@@ -137,11 +225,8 @@ impl Ibc for IbcService {
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
 
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_string());
-        let diversifier = request
-            .diversifier
-            .unwrap_or_else(|| DEFAULT_DIVERSIFIER.to_string());
 
-        self.connect(chain_id, mnemonic, memo, diversifier)
+        self.connect(chain_id, mnemonic, memo)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
