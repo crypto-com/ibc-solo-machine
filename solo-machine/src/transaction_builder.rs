@@ -425,7 +425,7 @@ fn get_connection_proof(
         .ok_or_else(|| anyhow!("connection with id {} not found", connection_id))?;
 
     let mut connection_path = ConnectionPath::new(connection_id);
-    connection_path.apply_prefix("ibc".parse().unwrap())?;
+    connection_path.apply_prefix(&"ibc".parse().unwrap());
 
     let connection_state_data = ConnectionStateData {
         path: connection_path.into_bytes(),
@@ -457,7 +457,7 @@ fn get_client_proof(
         .to_any()?;
 
     let mut client_state_path = ClientStatePath::new(client_id);
-    client_state_path.apply_prefix("ibc".parse().unwrap())?;
+    client_state_path.apply_prefix(&"ibc".parse().unwrap());
 
     let client_state_data = ClientStateData {
         path: client_state_path.into_bytes(),
@@ -503,7 +503,7 @@ fn get_consensus_proof(
         .to_any()?;
 
     let mut consensus_state_path = ConsensusStatePath::new(client_id, &height);
-    consensus_state_path.apply_prefix("ibc".parse().unwrap())?;
+    consensus_state_path.apply_prefix(&"ibc".parse().unwrap());
 
     let consensus_state_data = ConsensusStateData {
         path: consensus_state_path.into_bytes(),

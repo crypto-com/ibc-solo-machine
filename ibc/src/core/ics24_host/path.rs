@@ -20,22 +20,25 @@ pub(crate) const PATH_SEPARATOR: char = '/';
 ///
 /// <https://github.com/cosmos/ibc/tree/master/spec/core/ics-024-host-requirements#paths-identifiers-separators>
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Path {
-    identifiers: Vec<Identifier>,
-    path: String,
-}
+pub struct Path(String);
 
 impl Path {
     /// Applies the given prefix to path
-    pub fn apply_prefix(&mut self, prefix: Identifier) -> Result<(), Error> {
-        self.identifiers.insert(0, prefix);
-        self.path = compute_path(&self.identifiers)?;
-        Ok(())
+    pub fn apply_prefix(&mut self, prefix: &Identifier) {
+        let path = format!(
+            "{}{}{}{}",
+            PATH_SEPARATOR,
+            urlencoding::encode(&prefix),
+            PATH_SEPARATOR,
+            urlencoding::encode(&self.0)
+        );
+
+        self.0 = path;
     }
 
     /// Returns bytes of current path
     pub fn into_bytes(self) -> Vec<u8> {
-        self.path.into_bytes()
+        self.0.into_bytes()
     }
 }
 
@@ -57,10 +60,7 @@ impl FromStr for Path {
             PATH_SEPARATOR
         );
 
-        Ok(Self {
-            identifiers,
-            path: s.to_owned(),
-        })
+        Ok(Self(s.to_owned()))
     }
 }
 
@@ -81,35 +81,30 @@ fn compute_path(identifiers: &[Identifier]) -> Result<String, Error> {
 
 impl AsRef<[u8]> for Path {
     fn as_ref(&self) -> &[u8] {
-        self.path.as_bytes()
+        self.0.as_bytes()
     }
 }
 
 impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.path)
+        write!(f, "{}", self.0)
     }
 }
 
 impl From<Path> for MerklePath {
     fn from(value: Path) -> Self {
-        let key_path = value.identifiers.into_iter().map(Into::into).collect();
-        MerklePath { key_path }
+        MerklePath {
+            key_path: vec![value.0],
+        }
     }
 }
 
-impl From<Path> for Vec<Identifier> {
-    fn from(path: Path) -> Self {
-        path.identifiers
-    }
-}
-
-impl TryFrom<Vec<Identifier>> for Path {
+impl TryFrom<&[Identifier]> for Path {
     type Error = Error;
 
-    fn try_from(identifiers: Vec<Identifier>) -> Result<Self, Self::Error> {
-        let path = compute_path(&identifiers)?;
-        Ok(Self { identifiers, path })
+    fn try_from(identifiers: &[Identifier]) -> Result<Self, Self::Error> {
+        let path = compute_path(identifiers)?;
+        Ok(Self(path))
     }
 }
 
@@ -123,7 +118,7 @@ impl TryFrom<&MerklePath> for Path {
             .map(|id| id.parse())
             .collect::<Result<Vec<Identifier>, _>>()?;
 
-        identifiers.try_into()
+        identifiers.as_slice().try_into()
     }
 }
 
