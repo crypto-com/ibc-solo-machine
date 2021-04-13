@@ -70,9 +70,9 @@ fn compute_path(identifiers: &[Identifier]) -> Result<String, Error> {
         "path contains less than or equal to one identifier"
     );
 
-    let mut path = identifiers[0].to_string();
+    let mut path = String::new();
 
-    for id in identifiers.iter().skip(1) {
+    for id in identifiers.iter() {
         path.push_str(&format!("{}{}", PATH_SEPARATOR, id));
     }
 
