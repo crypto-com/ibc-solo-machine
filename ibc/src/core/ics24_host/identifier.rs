@@ -68,14 +68,14 @@ impl_id!("A port identifier", PortId, 2);
 impl ClientId {
     pub fn generate(client_type: ClientType) -> ClientId {
         match client_type {
-            ClientType::Tendermint => Self(Identifier::generate("07-tendermint-", 4).unwrap()),
+            ClientType::Tendermint => Self(Identifier::generate("07-tendermint", 4).unwrap()),
         }
     }
 }
 
 impl ConnectionId {
     pub fn generate() -> ConnectionId {
-        Self(Identifier::generate("connection-", 4).unwrap())
+        Self(Identifier::generate("connection", 4).unwrap())
     }
 }
 

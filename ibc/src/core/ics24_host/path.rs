@@ -73,7 +73,7 @@ fn compute_path(identifiers: &[Identifier]) -> Result<String, Error> {
     let mut path = identifiers[0].to_string();
 
     for id in identifiers.iter().skip(1) {
-        path.push_str(&id.to_string());
+        path.push_str(&format!("{}{}", PATH_SEPARATOR, id));
     }
 
     Ok(path)
