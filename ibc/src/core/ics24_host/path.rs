@@ -27,8 +27,10 @@ pub struct Path {
 
 impl Path {
     /// Applies the given prefix to path
-    pub fn apply_prefix(&mut self, prefix: Identifier) {
+    pub fn apply_prefix(&mut self, prefix: Identifier) -> Result<(), Error> {
         self.identifiers.insert(0, prefix);
+        self.path = compute_path(&self.identifiers)?;
+        Ok(())
     }
 
     /// Returns bytes of current path
