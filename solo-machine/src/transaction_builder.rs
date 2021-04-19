@@ -61,18 +61,29 @@ use prost_types::Duration;
 use tendermint::block::{Header, Height as BlockHeight};
 use tendermint_rpc::Client;
 
-use crate::{crypto::Crypto, handler::query_handler::QueryHandler, service::chain::Chain};
+use crate::{
+    crypto::Crypto,
+    handler::query_handler::QueryHandler,
+    service::chain::{Chain, ChainService},
+};
 
-pub struct TransactionBuilder {
-    chain: Chain,
-    mnemonic: Mnemonic,
-    memo: String,
+pub struct TransactionBuilder<'a> {
+    chain_service: &'a ChainService,
+    chain_id: &'a ChainId,
+    mnemonic: &'a Mnemonic,
+    memo: &'a str,
 }
 
-impl TransactionBuilder {
-    pub fn new(chain: Chain, mnemonic: Mnemonic, memo: String) -> Self {
+impl<'a> TransactionBuilder<'a> {
+    pub fn new(
+        chain_service: &'a ChainService,
+        chain_id: &'a ChainId,
+        mnemonic: &'a Mnemonic,
+        memo: &'a str,
+    ) -> Self {
         Self {
-            chain,
+            chain_service,
+            chain_id,
             mnemonic,
             memo,
         }
@@ -80,17 +91,22 @@ impl TransactionBuilder {
 
     /// Builds a transaction to create a solo machine client on IBC enabled chain
     pub async fn msg_create_solo_machine_client(&self) -> Result<TxRaw> {
+        let chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
         let any_public_key = self.mnemonic.to_public_key()?.to_any()?;
 
         let consensus_state = SoloMachineConsensusState {
             public_key: Some(any_public_key),
-            diversifier: self.chain.diversifier.clone(),
-            timestamp: self.chain.consensus_timestamp,
+            diversifier: chain.diversifier.clone(),
+            timestamp: chain.consensus_timestamp,
         };
         let any_consensus_state = consensus_state.to_any()?;
 
         let client_state = SoloMachineClientState {
-            sequence: 1,
+            sequence: chain.sequence,
             frozen_sequence: 0,
             consensus_state: Some(consensus_state),
             allow_update_after_proposal: true,
@@ -100,10 +116,10 @@ impl TransactionBuilder {
         let message = MsgCreateClient {
             client_state: Some(any_client_state),
             consensus_state: Some(any_consensus_state),
-            signer: self.mnemonic.account_address(&self.chain.account_prefix)?,
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
         };
 
-        self.build(&[message]).await
+        self.build(&chain, &[message]).await
     }
 
     /// Builds a transaction to create a tendermint client on IBC enabled solo machine
@@ -114,20 +130,25 @@ impl TransactionBuilder {
     where
         C: Client + Send + Sync,
     {
+        let chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
         let trust_level = Some(Fraction {
-            numerator: *self.chain.trust_level.numer(),
-            denominator: *self.chain.trust_level.denom(),
+            numerator: *chain.trust_level.numer(),
+            denominator: *chain.trust_level.denom(),
         });
 
-        let unbonding_period = Some(self.get_unbonding_period().await?);
-        let latest_height = self.get_latest_height(rpc_client).await?;
+        let unbonding_period = Some(self.get_unbonding_period(&chain).await?);
+        let latest_height = self.get_latest_height(&chain, rpc_client).await?;
 
         let client_state = TendermintClientState {
-            chain_id: self.chain.id.to_string(),
+            chain_id: chain.id.to_string(),
             trust_level,
-            trusting_period: Some(self.chain.trusting_period.into()),
+            trusting_period: Some(chain.trusting_period.into()),
             unbonding_period,
-            max_clock_drift: Some(self.chain.max_clock_drift.into()),
+            max_clock_drift: Some(chain.max_clock_drift.into()),
             frozen_height: Some(Height::zero()),
             latest_height: Some(latest_height.clone()),
             proof_specs: proof_specs(),
@@ -147,6 +168,11 @@ impl TransactionBuilder {
         solo_machine_client_id: &ClientId,
         tendermint_client_id: &ClientId,
     ) -> Result<TxRaw> {
+        let chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
         let message = MsgConnectionOpenInit {
             client_id: solo_machine_client_id.to_string(),
             counterparty: Some(ConnectionCounterparty {
@@ -161,10 +187,10 @@ impl TransactionBuilder {
                 features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
             }),
             delay_period: 0,
-            signer: self.mnemonic.account_address(&self.chain.account_prefix)?,
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
         };
 
-        self.build(&[message]).await
+        self.build(&chain, &[message]).await
     }
 
     pub async fn msg_connection_open_ack(
@@ -174,9 +200,30 @@ impl TransactionBuilder {
         tendermint_client_id: &ClientId,
         tendermint_connection_id: &ConnectionId,
     ) -> Result<TxRaw> {
+        let mut chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
         let tendermint_client_state = query_handler
             .get_client_state(tendermint_client_id)?
             .ok_or_else(|| anyhow!("client for client id {} not found", tendermint_client_id))?;
+
+        let proof_try = get_connection_proof(
+            &chain,
+            query_handler,
+            &self.mnemonic,
+            tendermint_connection_id,
+        )?;
+        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+
+        let proof_client =
+            get_client_proof(&chain, query_handler, &self.mnemonic, &tendermint_client_id)?;
+        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+
+        let proof_consensus =
+            get_consensus_proof(&chain, query_handler, &self.mnemonic, &tendermint_client_id)?;
+        chain = self.chain_service.increment_sequence(&self.chain_id)?;
 
         let message = MsgConnectionOpenAck {
             connection_id: solo_machine_connection_id.to_string(),
@@ -186,33 +233,18 @@ impl TransactionBuilder {
                 features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
             }),
             client_state: Some(tendermint_client_state.to_any()?),
-            proof_height: Some(Height::new(0, 1)),
-            proof_try: get_connection_proof(
-                &self.chain,
-                query_handler,
-                &self.mnemonic,
-                tendermint_connection_id,
-            )?,
-            proof_client: get_client_proof(
-                &self.chain,
-                query_handler,
-                &self.mnemonic,
-                &tendermint_client_id,
-            )?,
-            proof_consensus: get_consensus_proof(
-                &self.chain,
-                query_handler,
-                &self.mnemonic,
-                &tendermint_client_id,
-            )?,
+            proof_height: Some(Height::new(0, chain.sequence)),
+            proof_try,
+            proof_client,
+            proof_consensus,
             consensus_height: tendermint_client_state.latest_height,
-            signer: self.mnemonic.account_address(&self.chain.account_prefix)?,
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
         };
 
-        self.build(&[message]).await
+        self.build(&chain, &[message]).await
     }
 
-    async fn build<T>(&self, messages: &[T]) -> Result<TxRaw>
+    async fn build<T>(&self, chain: &Chain, messages: &[T]) -> Result<TxRaw>
     where
         T: AnyConvert,
     {
@@ -221,10 +253,10 @@ impl TransactionBuilder {
             .context("unable to build transaction body")?;
         let tx_body_bytes = proto_encode(&tx_body)?;
 
-        let (account_number, account_sequence) = self.get_account_details().await?;
+        let (account_number, account_sequence) = self.get_account_details(&chain).await?;
 
         let auth_info = self
-            .build_auth_info(account_sequence)
+            .build_auth_info(&chain, account_sequence)
             .context("unable to build auth info")?;
         let auth_info_bytes = proto_encode(&auth_info)?;
 
@@ -232,7 +264,7 @@ impl TransactionBuilder {
             .build_signature(
                 tx_body_bytes.clone(),
                 auth_info_bytes.clone(),
-                self.chain.id.to_string(),
+                chain.id.to_string(),
                 account_number,
             )
             .context("unable to sign transaction")?;
@@ -255,14 +287,14 @@ impl TransactionBuilder {
 
         Ok(TxBody {
             messages,
-            memo: self.memo.clone(),
+            memo: self.memo.to_owned(),
             timeout_height: 0,
             extension_options: Default::default(),
             non_critical_extension_options: Default::default(),
         })
     }
 
-    fn build_auth_info(&self, account_sequence: u64) -> Result<AuthInfo> {
+    fn build_auth_info(&self, chain: &Chain, account_sequence: u64) -> Result<AuthInfo> {
         let signer_info = SignerInfo {
             public_key: Some(self.mnemonic.to_public_key()?.to_any()?),
             mode_info: Some(ModeInfo {
@@ -273,10 +305,10 @@ impl TransactionBuilder {
 
         let fee = Fee {
             amount: vec![Coin {
-                denom: self.chain.fee.denom.clone(),
-                amount: self.chain.fee.amount.to_string(),
+                denom: chain.fee.denom.clone(),
+                amount: chain.fee.amount.to_string(),
             }],
-            gas_limit: self.chain.fee.gas_limit,
+            gas_limit: chain.fee.gas_limit,
             payer: "".to_owned(),
             granter: "".to_owned(),
         };
@@ -306,15 +338,15 @@ impl TransactionBuilder {
         Ok(signature.as_ref().to_vec())
     }
 
-    async fn get_account_details(&self) -> Result<(u64, u64)> {
-        let mut query_client = AuthQueryClient::connect(self.chain.grpc_addr.clone())
+    async fn get_account_details(&self, chain: &Chain) -> Result<(u64, u64)> {
+        let mut query_client = AuthQueryClient::connect(chain.grpc_addr.clone())
             .await
             .context(format!(
                 "unable to connect to grpc query client at {}",
-                self.chain.grpc_addr
+                chain.grpc_addr
             ))?;
 
-        let account_address = self.mnemonic.account_address(&self.chain.account_prefix)?;
+        let account_address = self.mnemonic.account_address(&chain.account_prefix)?;
 
         let response = query_client
             .account(QueryAccountRequest {
@@ -330,12 +362,12 @@ impl TransactionBuilder {
         Ok((account.account_number, account.sequence))
     }
 
-    async fn get_unbonding_period(&self) -> Result<Duration> {
-        let mut query_client = StakingQueryClient::connect(self.chain.grpc_addr.clone())
+    async fn get_unbonding_period(&self, chain: &Chain) -> Result<Duration> {
+        let mut query_client = StakingQueryClient::connect(chain.grpc_addr.clone())
             .await
             .context(format!(
                 "unable to connect to grpc query client at {}",
-                self.chain.grpc_addr
+                chain.grpc_addr
             ))?;
 
         query_client
@@ -348,7 +380,7 @@ impl TransactionBuilder {
             .ok_or_else(|| anyhow!("missing unbonding period in staking params"))
     }
 
-    async fn get_latest_height<C>(&self, rpc_client: &C) -> Result<Height>
+    async fn get_latest_height<C>(&self, chain: &Chain, rpc_client: &C) -> Result<Height>
     where
         C: Client + Send + Sync,
     {
@@ -357,8 +389,8 @@ impl TransactionBuilder {
         ensure!(
             !response.sync_info.catching_up,
             "node at {} running chain {} not caught up",
-            self.chain.rpc_addr,
-            self.chain.id,
+            chain.rpc_addr,
+            chain.id,
         );
 
         let revision_number = response
@@ -467,7 +499,7 @@ fn get_client_proof(
     let client_state_data_bytes = proto_encode(&client_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: 1,
+        sequence: 2,
         timestamp: chain.consensus_timestamp,
         diversifier: chain.diversifier.to_owned(),
         data_type: DataType::ClientState.into(),
@@ -513,7 +545,7 @@ fn get_consensus_proof(
     let consensus_state_data_bytes = proto_encode(&consensus_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: 1,
+        sequence: 3,
         timestamp: chain.consensus_timestamp,
         diversifier: chain.diversifier.to_owned(),
         data_type: DataType::ConsensusState.into(),

@@ -5,13 +5,16 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use ibc::core::ics24_host::identifier::ChainId;
 use num_rational::{ParseRatioError, Ratio};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
-use sled::Tree;
+use sled::{
+    transaction::{ConflictableTransactionError, TransactionError},
+    Tree,
+};
 use tendermint::node::Id as NodeId;
 use tendermint_rpc::{Client, HttpClient};
 use time::OffsetDateTime;
@@ -38,6 +41,7 @@ pub struct Chain {
     pub rpc_timeout: Duration,
     pub diversifier: String,
     pub consensus_timestamp: u64,
+    pub sequence: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,6 +83,51 @@ impl ChainService {
         }
     }
 
+    pub fn increment_sequence(&self, chain_id: &ChainId) -> Result<Chain> {
+        let response: Result<Chain, TransactionError<Error>> = self.tree.transaction(|tx| {
+            let optional_bytes = tx.get(chain_id)?;
+
+            match optional_bytes {
+                None => Err(ConflictableTransactionError::Abort(anyhow!(
+                    "chain with id {} not found",
+                    chain_id
+                ))),
+                Some(bytes) => {
+                    let mut chain: Chain = serde_cbor::from_slice(&bytes)
+                        .context("unable to deserialize chain cbor bytes")
+                        .map_err(|e| ConflictableTransactionError::Abort(e))?;
+
+                    chain.sequence += 1;
+
+                    tx.insert(
+                        chain_id.as_bytes(),
+                        serde_cbor::to_vec(&chain)
+                            .context("unable to serialize chain to cbor")
+                            .map_err(|e| ConflictableTransactionError::Abort(e))?,
+                    )?;
+
+                    Ok(chain)
+                }
+            }
+        });
+
+        match response {
+            Ok(chain) => {
+                log::info!(
+                    "successfully incremented sequence for chain with id {}",
+                    chain_id
+                );
+                Ok(chain)
+            }
+            Err(TransactionError::Storage(err)) => {
+                Err(Error::from(err).context("storage error while executing transaction"))
+            }
+            Err(TransactionError::Abort(err)) => {
+                Err(err.context("abort error while executing transaction"))
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn add(
         &self,
@@ -103,6 +152,8 @@ impl ChainService {
             .try_into()
             .context("unable to convert unix timestamp to u64")?;
 
+        let sequence = 1;
+
         let chain = Chain {
             id: chain_id.clone(),
             node_id,
@@ -116,6 +167,7 @@ impl ChainService {
             rpc_timeout,
             diversifier,
             consensus_timestamp,
+            sequence,
         };
 
         self.tree.insert(&chain_id, serde_cbor::to_vec(&chain)?)?;

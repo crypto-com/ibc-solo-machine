@@ -59,7 +59,8 @@ impl IbcService {
 
         let rpc_client =
             HttpClient::new(chain.rpc_addr.as_str()).context("unable to connect to rpc client")?;
-        let transaction_builder = TransactionBuilder::new(chain, mnemonic, memo);
+        let transaction_builder =
+            TransactionBuilder::new(&self.chain_service, &chain_id, &mnemonic, &memo);
 
         let solo_machine_client_id = self
             .create_solo_machine_client(&rpc_client, &transaction_builder)
@@ -117,10 +118,10 @@ impl IbcService {
         Ok(())
     }
 
-    async fn create_solo_machine_client<C>(
+    async fn create_solo_machine_client<'a, C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder,
+        transaction_builder: &TransactionBuilder<'a>,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
@@ -136,10 +137,10 @@ impl IbcService {
         extract_attribute(&response.deliver_tx.events, "create_client", "client_id")?.parse()
     }
 
-    async fn create_tendermint_client<C>(
+    async fn create_tendermint_client<'a, C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder,
+        transaction_builder: &TransactionBuilder<'a>,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
@@ -152,10 +153,10 @@ impl IbcService {
             .create_client(&client_state, &consensus_state)
     }
 
-    async fn connection_open_init<C>(
+    async fn connection_open_init<'a, C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder,
+        transaction_builder: &TransactionBuilder<'a>,
         solo_machine_client_id: &ClientId,
         tendermint_client_id: &ClientId,
     ) -> Result<ConnectionId, Error>
@@ -180,10 +181,10 @@ impl IbcService {
         .parse()
     }
 
-    async fn connection_open_ack<C>(
+    async fn connection_open_ack<'a, C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder,
+        transaction_builder: &TransactionBuilder<'a>,
         solo_machine_connection_id: &ConnectionId,
         tendermint_client_id: &ClientId,
         tendermint_connection_id: &ConnectionId,
