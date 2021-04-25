@@ -3,7 +3,7 @@ tonic::include_proto!("ibc");
 use anyhow::{anyhow, ensure, Context, Error};
 use bip39::{Language, Mnemonic};
 use ibc::{
-    core::ics24_host::identifier::{ChainId, ClientId, ConnectionId},
+    core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId},
     proto::proto_encode,
 };
 use tendermint::abci::{
@@ -22,7 +22,7 @@ use crate::{
 
 use self::ibc_server::Ibc;
 
-use super::chain::ChainService;
+use super::chain::{ChainConnectionDetails, ChainService};
 
 const DEFAULT_MEMO: &str = "solo-machine-memo";
 
@@ -113,7 +113,55 @@ impl IbcService {
         self.msg_handler
             .connection_open_confirm(&tendermint_connection_id)?;
 
-        log::info!("Send connection open confirmation");
+        log::info!("Sent connection open confirmation");
+
+        let solo_machine_channel_id = self
+            .channel_open_init(
+                &rpc_client,
+                &transaction_builder,
+                &solo_machine_connection_id,
+            )
+            .await?;
+
+        log::info!(
+            "Initialized solo machine channel: {}",
+            solo_machine_channel_id
+        );
+
+        let tendermint_channel_id = self.msg_handler.channel_open_try(
+            &chain.port_id,
+            &solo_machine_channel_id,
+            &tendermint_connection_id,
+        )?;
+
+        log::info!("Initialized tendermint channel: {}", tendermint_channel_id);
+
+        self.channel_open_ack(
+            &rpc_client,
+            &transaction_builder,
+            &solo_machine_channel_id,
+            &tendermint_channel_id,
+        )
+        .await?;
+
+        log::info!("Sent channel open acknowledgement");
+
+        self.msg_handler
+            .channel_open_confirm(&chain.port_id, &tendermint_channel_id)?;
+
+        log::info!("Sent channel open confirmation");
+
+        let connection_details = ChainConnectionDetails {
+            solo_machine_client_id,
+            tendermint_client_id,
+            solo_machine_connection_id,
+            tendermint_connection_id,
+            solo_machine_channel_id,
+            tendermint_channel_id,
+        };
+
+        self.chain_service
+            .add_connection_details(&chain_id, &connection_details)?;
 
         Ok(())
     }
@@ -198,6 +246,60 @@ impl IbcService {
                 solo_machine_connection_id,
                 tendermint_client_id,
                 tendermint_connection_id,
+            )
+            .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        Ok(())
+    }
+
+    async fn channel_open_init<'a, C>(
+        &self,
+        rpc_client: &C,
+        transaction_builder: &TransactionBuilder<'a>,
+        solo_machine_connection_id: &ConnectionId,
+    ) -> Result<ChannelId, Error>
+    where
+        C: Client + Send + Sync,
+    {
+        let msg = transaction_builder
+            .msg_channel_open_init(solo_machine_connection_id)
+            .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        extract_attribute(
+            &response.deliver_tx.events,
+            "channel_open_init",
+            "channel_id",
+        )?
+        .parse()
+    }
+
+    async fn channel_open_ack<'a, C>(
+        &self,
+        rpc_client: &C,
+        transaction_builder: &TransactionBuilder<'a>,
+        solo_machine_channel_id: &ChannelId,
+        tendermint_channel_id: &ChannelId,
+    ) -> Result<(), Error>
+    where
+        C: Client + Send + Sync,
+    {
+        let msg = transaction_builder
+            .msg_channel_open_ack(
+                &self.query_handler,
+                solo_machine_channel_id,
+                tendermint_channel_id,
             )
             .await?;
 

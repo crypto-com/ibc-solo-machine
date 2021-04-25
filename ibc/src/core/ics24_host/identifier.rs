@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::ics02_client::client_type::ClientType;
 
-use super::path::PATH_SEPARATOR;
-
 pub(crate) const MAX_IDENTIFIER_LEN: usize = 64;
 const VALID_CHAIN_ID_PATTERN: &str = r"^.+[^-]-{1}[1-9][0-9]*$";
 const VALID_ID_PATTERN: &str = r"^[a-zA-Z0-9\._\+\-\#\[\]<>]+$";
@@ -62,7 +60,7 @@ macro_rules! impl_id {
 
 impl_id!("A client identifier", ClientId, 9);
 impl_id!("A connection identifier", ConnectionId, 10);
-impl_id!("A channel identifier", ChannelId, 10);
+impl_id!("A channel identifier", ChannelId, 8);
 impl_id!("A port identifier", PortId, 2);
 
 impl ClientId {
@@ -76,6 +74,12 @@ impl ClientId {
 impl ConnectionId {
     pub fn generate() -> ConnectionId {
         Self(Identifier::generate("connection", 4).unwrap())
+    }
+}
+
+impl ChannelId {
+    pub fn generate() -> ChannelId {
+        Self(Identifier::generate("channel", 4).unwrap())
     }
 }
 
@@ -189,7 +193,7 @@ impl FromStr for Identifier {
         ensure!(!s.trim().is_empty(), "identifier cannot be blank");
 
         ensure!(
-            !s.contains(PATH_SEPARATOR),
+            !s.contains('/'),
             "identifier {} cannot contain separator '/'",
             s
         );

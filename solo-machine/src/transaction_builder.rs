@@ -25,6 +25,10 @@ use cosmos_sdk_proto::{
     },
     ibc::{
         core::{
+            channel::v1::{
+                Channel, Counterparty as ChannelCounterparty, MsgChannelOpenAck,
+                MsgChannelOpenInit, Order as ChannelOrder, State as ChannelState,
+            },
             client::v1::{Height, MsgCreateClient},
             commitment::v1::MerklePrefix,
             connection::v1::{
@@ -37,9 +41,12 @@ use cosmos_sdk_proto::{
             ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType, SignBytes,
             TimestampedSignatureData,
         },
-        lightclients::tendermint::v1::{
-            ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
-            Fraction,
+        lightclients::{
+            solomachine::v1::ChannelStateData,
+            tendermint::v1::{
+                ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
+                Fraction,
+            },
         },
     },
 };
@@ -49,8 +56,8 @@ use ibc::{
         ics07_tendermint::consensus_state::IConsensusState,
         ics23_vector_commitments::proof_specs,
         ics24_host::{
-            identifier::{ChainId, ClientId, ConnectionId},
-            path::{ClientStatePath, ConnectionPath, ConsensusStatePath},
+            identifier::{ChainId, ChannelId, ClientId, ConnectionId, PortId},
+            path::{ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath},
         },
     },
     proto::{proto_encode, AnyConvert},
@@ -238,6 +245,66 @@ impl<'a> TransactionBuilder<'a> {
             proof_client,
             proof_consensus,
             consensus_height: tendermint_client_state.latest_height,
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
+        };
+
+        self.build(&chain, &[message]).await
+    }
+
+    pub async fn msg_channel_open_init(
+        &self,
+        solo_machine_connection_id: &ConnectionId,
+    ) -> Result<TxRaw> {
+        let chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
+        let message = MsgChannelOpenInit {
+            port_id: chain.port_id.to_string(),
+            channel: Some(Channel {
+                state: ChannelState::Init.into(),
+                ordering: ChannelOrder::Unordered.into(),
+                counterparty: Some(ChannelCounterparty {
+                    port_id: chain.port_id.to_string(),
+                    channel_id: "".to_string(),
+                }),
+                connection_hops: vec![solo_machine_connection_id.to_string()],
+                version: "ics20-1".to_string(),
+            }),
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
+        };
+
+        self.build(&chain, &[message]).await
+    }
+
+    pub async fn msg_channel_open_ack(
+        &self,
+        query_handler: &QueryHandler,
+        solo_machine_channel_id: &ChannelId,
+        tendermint_channel_id: &ChannelId,
+    ) -> Result<TxRaw> {
+        let mut chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
+        let proof_try = get_channel_proof(
+            &chain,
+            query_handler,
+            &self.mnemonic,
+            &chain.port_id,
+            tendermint_channel_id,
+        )?;
+        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+
+        let message = MsgChannelOpenAck {
+            port_id: chain.port_id.to_string(),
+            channel_id: solo_machine_channel_id.to_string(),
+            counterparty_channel_id: tendermint_channel_id.to_string(),
+            counterparty_version: "ics20-1".to_string(),
+            proof_height: Some(Height::new(0, chain.sequence)),
+            proof_try,
             signer: self.mnemonic.account_address(&chain.account_prefix)?,
         };
 
@@ -446,6 +513,50 @@ impl<'a> TransactionBuilder<'a> {
     // }
 }
 
+fn get_channel_proof(
+    chain: &Chain,
+    query_handler: &QueryHandler,
+    mnemonic: &Mnemonic,
+    port_id: &PortId,
+    channel_id: &ChannelId,
+) -> Result<Vec<u8>> {
+    let channel = query_handler
+        .get_channel(port_id, channel_id)?
+        .ok_or_else(|| {
+            anyhow!(
+                "channel with port id {} and channel id {} not found",
+                port_id,
+                channel_id
+            )
+        })?;
+
+    log::info!("channel: {:?}", channel);
+
+    let mut channel_path = ChannelPath::new(port_id, channel_id);
+    channel_path.apply_prefix(&"ibc".parse().unwrap());
+
+    log::info!("channel path: {:?}", channel_path.clone().into_bytes());
+
+    let channel_state_data = ChannelStateData {
+        path: channel_path.into_bytes(),
+        channel: Some(channel),
+    };
+
+    let channel_state_data_bytes = proto_encode(&channel_state_data)?;
+
+    let sign_bytes = SignBytes {
+        sequence: chain.sequence,
+        timestamp: chain.consensus_timestamp,
+        diversifier: chain.diversifier.to_owned(),
+        data_type: DataType::ChannelState.into(),
+        data: channel_state_data_bytes,
+    };
+
+    log::info!("sign bytes: {:?}", sign_bytes);
+
+    sign(chain, mnemonic, sign_bytes)
+}
+
 fn get_connection_proof(
     chain: &Chain,
     query_handler: &QueryHandler,
@@ -467,7 +578,7 @@ fn get_connection_proof(
     let connection_state_data_bytes = proto_encode(&connection_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: 1,
+        sequence: chain.sequence,
         timestamp: chain.consensus_timestamp,
         diversifier: chain.diversifier.to_owned(),
         data_type: DataType::ConnectionState.into(),
@@ -499,7 +610,7 @@ fn get_client_proof(
     let client_state_data_bytes = proto_encode(&client_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: 2,
+        sequence: chain.sequence,
         timestamp: chain.consensus_timestamp,
         diversifier: chain.diversifier.to_owned(),
         data_type: DataType::ClientState.into(),
@@ -545,7 +656,7 @@ fn get_consensus_proof(
     let consensus_state_data_bytes = proto_encode(&consensus_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: 3,
+        sequence: chain.sequence,
         timestamp: chain.consensus_timestamp,
         diversifier: chain.diversifier.to_owned(),
         data_type: DataType::ConsensusState.into(),

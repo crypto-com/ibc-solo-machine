@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Error, Result};
-use ibc::core::ics24_host::identifier::ChainId;
+use ibc::core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, PortId};
 use num_rational::{ParseRatioError, Ratio};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -25,6 +25,7 @@ use self::chain_server::Chain as IChain;
 const DEFAULT_ACCOUNT_PREFIX: &str = "cosmos";
 const DEFAULT_DIVERSIFIER: &str = "solo-machine-diversifier";
 const DEFAULT_GRPC_ADDR: &str = "http://0.0.0.0:9090";
+const DEFAULT_PORT_ID: &str = "transfer";
 const DEFAULT_RPC_ADDR: &str = "http://0.0.0.0:26657";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,6 +43,31 @@ pub struct Chain {
     pub diversifier: String,
     pub consensus_timestamp: u64,
     pub sequence: u64,
+    pub port_id: PortId,
+    pub connection_details: Option<ChainConnectionDetails>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainConnectionDetails {
+    pub solo_machine_client_id: ClientId,
+    pub tendermint_client_id: ClientId,
+    pub solo_machine_connection_id: ConnectionId,
+    pub tendermint_connection_id: ConnectionId,
+    pub solo_machine_channel_id: ChannelId,
+    pub tendermint_channel_id: ChannelId,
+}
+
+impl From<&ChainConnectionDetails> for ConnectionDetails {
+    fn from(value: &ChainConnectionDetails) -> Self {
+        ConnectionDetails {
+            solo_machine_client_id: value.solo_machine_client_id.to_string(),
+            tendermint_client_id: value.tendermint_client_id.to_string(),
+            solo_machine_connection_id: value.solo_machine_connection_id.to_string(),
+            tendermint_connection_id: value.tendermint_connection_id.to_string(),
+            solo_machine_channel_id: value.solo_machine_channel_id.to_string(),
+            tendermint_channel_id: value.tendermint_channel_id.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -128,6 +154,55 @@ impl ChainService {
         }
     }
 
+    pub fn add_connection_details(
+        &self,
+        chain_id: &ChainId,
+        connection_details: &ChainConnectionDetails,
+    ) -> Result<()> {
+        let response: Result<(), TransactionError<Error>> = self.tree.transaction(|tx| {
+            let optional_bytes = tx.get(chain_id)?;
+
+            match optional_bytes {
+                None => Err(ConflictableTransactionError::Abort(anyhow!(
+                    "chain with id {} not found",
+                    chain_id
+                ))),
+                Some(bytes) => {
+                    let mut chain: Chain = serde_cbor::from_slice(&bytes)
+                        .context("unable to deserialize chain cbor bytes")
+                        .map_err(|e| ConflictableTransactionError::Abort(e))?;
+
+                    chain.connection_details = Some(connection_details.clone());
+
+                    tx.insert(
+                        chain_id.as_bytes(),
+                        serde_cbor::to_vec(&chain)
+                            .context("unable to serialize chain to cbor")
+                            .map_err(|e| ConflictableTransactionError::Abort(e))?,
+                    )?;
+
+                    Ok(())
+                }
+            }
+        });
+
+        match response {
+            Ok(_) => {
+                log::info!(
+                    "successfully incremented sequence for chain with id {}",
+                    chain_id
+                );
+                Ok(())
+            }
+            Err(TransactionError::Storage(err)) => {
+                Err(Error::from(err).context("storage error while executing transaction"))
+            }
+            Err(TransactionError::Abort(err)) => {
+                Err(err.context("abort error while executing transaction"))
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn add(
         &self,
@@ -140,6 +215,7 @@ impl ChainService {
         max_clock_drift: Duration,
         rpc_timeout: Duration,
         diversifier: String,
+        port_id: PortId,
     ) -> Result<ChainId> {
         let tendermint_client = HttpClient::new(rpc_addr.as_str())?;
         let status = tendermint_client.status().await?;
@@ -168,6 +244,8 @@ impl ChainService {
             diversifier,
             consensus_timestamp,
             sequence,
+            port_id,
+            connection_details: None,
         };
 
         self.tree.insert(&chain_id, serde_cbor::to_vec(&chain)?)?;
@@ -252,6 +330,12 @@ impl IChain for ChainService {
             .diversifier
             .unwrap_or_else(|| DEFAULT_DIVERSIFIER.to_string());
 
+        let port_id = request
+            .port_id
+            .unwrap_or_else(|| DEFAULT_PORT_ID.to_string())
+            .parse()
+            .map_err(|e| Status::invalid_argument(format!("invalid port id: {}", e)))?;
+
         let chain_id = self
             .add(
                 grpc_addr,
@@ -263,6 +347,7 @@ impl IChain for ChainService {
                 max_clock_drift,
                 rpc_timeout,
                 diversifier,
+                port_id,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -305,6 +390,8 @@ impl IChain for ChainService {
             max_clock_drift: Some(chain.max_clock_drift.into()),
             rpc_timeout: Some(chain.rpc_timeout.into()),
             diversifier: chain.diversifier.to_string(),
+            port_id: chain.port_id.to_string(),
+            connection_details: chain.connection_details.as_ref().map(Into::into),
         };
 
         Ok(Response::new(response))

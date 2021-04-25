@@ -1,13 +1,13 @@
 use anyhow::Result;
 use cosmos_sdk_proto::ibc::{
-    core::{client::v1::Height, connection::v1::ConnectionEnd},
+    core::{channel::v1::Channel, client::v1::Height, connection::v1::ConnectionEnd},
     lightclients::tendermint::v1::{
         ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
     },
 };
 use ibc::core::ics24_host::{
-    identifier::{ClientId, ConnectionId},
-    path::{ClientStatePath, ConnectionPath, ConsensusStatePath},
+    identifier::{ChannelId, ClientId, ConnectionId, PortId},
+    path::{ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath},
 };
 use prost::Message;
 use sled::Tree;
@@ -59,6 +59,19 @@ impl QueryHandler {
             None => Ok(None),
             Some(bytes) => {
                 let connection = ConnectionEnd::decode(bytes.as_ref())?;
+                Ok(Some(connection))
+            }
+        }
+    }
+
+    pub fn get_channel(&self, port_id: &PortId, channel_id: &ChannelId) -> Result<Option<Channel>> {
+        let path = ChannelPath::new(port_id, channel_id);
+        let bytes = self.tree.get(&path)?;
+
+        match bytes {
+            None => Ok(None),
+            Some(bytes) => {
+                let connection = Channel::decode(bytes.as_ref())?;
                 Ok(Some(connection))
             }
         }

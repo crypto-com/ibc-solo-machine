@@ -31,6 +31,8 @@ message AddChainRequest {
     google.protobuf.Duration rpc_timeout = 8;
     // Diversifier for solo machine
     optional string diversifier = 9;
+    // Port ID of IBC channel
+    optional string port_id = 10;
 }
 
 message AddChainResponse {
@@ -75,4 +77,23 @@ message QueryChainResponse {
     google.protobuf.Duration rpc_timeout = 10;
     // Diversifier for solo machine
     string diversifier = 11;
+    // Port ID of IBC channel
+    string port_id = 12;
+    // Connection details of this chain
+    ConnectionDetails connection_details = 13;
+}
+
+message ConnectionDetails {
+    // Client ID of solo machine on IBC enabled chain
+    string solo_machine_client_id = 1;
+    // Client ID of IBC enabled chain on solo machine
+    string tendermint_client_id = 2;
+    // Connection ID of solo machine on IBC enabled chain
+    string solo_machine_connection_id = 3;
+    // Connection ID of IBC enabled chain on solo machine
+    string tendermint_connection_id = 4;
+    // Channel ID of solo machine on IBC enabled chain
+    string solo_machine_channel_id = 5;
+    // Channel ID of IBC enabled chain on solo machine
+    string tendermint_channel_id = 6;
 }

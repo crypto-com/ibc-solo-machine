@@ -10,9 +10,7 @@ use cosmos_sdk_proto::ibc::core::{client::v1::Height, commitment::v1::MerklePath
 
 use crate::core::ics02_client::height::IHeight;
 
-use super::identifier::{ClientId, ConnectionId, Identifier};
-
-pub(crate) const PATH_SEPARATOR: char = '/';
+use super::identifier::{ChannelId, ClientId, ConnectionId, Identifier, PortId};
 
 /// Path is used as a key for an object store in state
 ///
@@ -26,10 +24,8 @@ impl Path {
     /// Applies the given prefix to path
     pub fn apply_prefix(&mut self, prefix: &Identifier) {
         let path = format!(
-            "{}{}{}{}",
-            PATH_SEPARATOR,
+            "/{}/{}",
             urlencoding::encode(&prefix),
-            PATH_SEPARATOR,
             urlencoding::encode(&self.0)
         );
 
@@ -49,15 +45,14 @@ impl FromStr for Path {
         ensure!(!s.trim().is_empty(), "path cannot be empty");
 
         let identifiers = s
-            .split(PATH_SEPARATOR)
+            .split('/')
             .map(FromStr::from_str)
             .collect::<Result<Vec<Identifier>, _>>()?;
 
         ensure!(
             identifiers.len() > 1,
-            "path {} doesn't contain any separator '{}'",
+            "path {} doesn't contain any separator '/'",
             s,
-            PATH_SEPARATOR
         );
 
         Ok(Self(s.to_owned()))
@@ -73,7 +68,7 @@ fn compute_path(identifiers: &[Identifier]) -> Result<String, Error> {
     let mut path = String::new();
 
     for id in identifiers.iter() {
-        path.push_str(&format!("{}{}", PATH_SEPARATOR, id));
+        path.push_str(&format!("/{}", id));
     }
 
     Ok(path)
@@ -166,14 +161,7 @@ impl_path!("Path for storing client type", ClientTypePath);
 impl ClientTypePath {
     /// Creates a new client type path from client id
     pub fn new(client_id: ClientId) -> Self {
-        Self(
-            format!(
-                "clients{}{}{}clientType",
-                PATH_SEPARATOR, client_id, PATH_SEPARATOR
-            )
-            .parse()
-            .unwrap(),
-        )
+        Self(format!("clients/{}/clientType", client_id).parse().unwrap())
     }
 }
 
@@ -183,12 +171,9 @@ impl ClientStatePath {
     /// Creates a new client state path from client id
     pub fn new(client_id: &ClientId) -> Self {
         Self(
-            format!(
-                "clients{}{}{}clientState",
-                PATH_SEPARATOR, client_id, PATH_SEPARATOR
-            )
-            .parse()
-            .unwrap(),
+            format!("clients/{}/clientState", client_id)
+                .parse()
+                .unwrap(),
         )
     }
 }
@@ -200,11 +185,8 @@ impl ConsensusStatePath {
     pub fn new(client_id: &ClientId, height: &Height) -> Self {
         Self(
             format!(
-                "clients{}{}{}consensusStates{}{}",
-                PATH_SEPARATOR,
+                "clients/{}/consensusStates/{}",
                 client_id,
-                PATH_SEPARATOR,
-                PATH_SEPARATOR,
                 height.to_string()
             )
             .parse()
@@ -217,8 +199,16 @@ impl_path!("Path for storing connection", ConnectionPath);
 
 impl ConnectionPath {
     pub fn new(connection_id: &ConnectionId) -> Self {
+        Self(format!("connections/{}", connection_id).parse().unwrap())
+    }
+}
+
+impl_path!("Path for storing channel", ChannelPath);
+
+impl ChannelPath {
+    pub fn new(port_id: &PortId, channel_id: &ChannelId) -> Self {
         Self(
-            format!("connections{}{}", PATH_SEPARATOR, connection_id)
+            format!("channelEnds/ports/{}/channels/{}", port_id, channel_id)
                 .parse()
                 .unwrap(),
         )
