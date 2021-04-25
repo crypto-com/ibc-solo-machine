@@ -530,12 +530,8 @@ fn get_channel_proof(
             )
         })?;
 
-    log::info!("channel: {:?}", channel);
-
     let mut channel_path = ChannelPath::new(port_id, channel_id);
     channel_path.apply_prefix(&"ibc".parse().unwrap());
-
-    log::info!("channel path: {:?}", channel_path.clone().into_bytes());
 
     let channel_state_data = ChannelStateData {
         path: channel_path.into_bytes(),
@@ -551,8 +547,6 @@ fn get_channel_proof(
         data_type: DataType::ChannelState.into(),
         data: channel_state_data_bytes,
     };
-
-    log::info!("sign bytes: {:?}", sign_bytes);
 
     sign(chain, mnemonic, sign_bytes)
 }
