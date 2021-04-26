@@ -214,3 +214,18 @@ impl ChannelPath {
         )
     }
 }
+
+impl_path!("Path for storing packet commitments", PacketCommitmentPath);
+
+impl PacketCommitmentPath {
+    pub fn new(port_id: &PortId, channel_id: &ChannelId, packet_sequence: u64) -> Self {
+        Self(
+            format!(
+                "commitments/ports/{}/channels/{}/sequences/{}",
+                port_id, channel_id, packet_sequence
+            )
+            .parse()
+            .unwrap(),
+        )
+    }
+}

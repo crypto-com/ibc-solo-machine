@@ -16,6 +16,7 @@ use crate::crypto::Crypto;
 
 use self::bank_server::Bank;
 
+#[derive(Clone)]
 pub struct BankService {
     tree: Tree,
 }
@@ -26,7 +27,7 @@ impl BankService {
         Self { tree }
     }
 
-    fn mint(
+    pub fn mint(
         &self,
         mnemonic: &Mnemonic,
         account_prefix: &str,
@@ -70,7 +71,7 @@ impl BankService {
         }
     }
 
-    fn burn(
+    pub fn burn(
         &self,
         mnemonic: &Mnemonic,
         account_prefix: &str,

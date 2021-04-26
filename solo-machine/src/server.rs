@@ -39,7 +39,12 @@ impl Server {
 
         let bank_service = BankService::new(self.balances_tree()?);
         let chain_service = ChainService::new(self.chains_tree()?);
-        let ibc_service = IbcService::new(msg_handler, query_handler, chain_service.clone());
+        let ibc_service = IbcService::new(
+            msg_handler,
+            query_handler,
+            chain_service.clone(),
+            bank_service.clone(),
+        );
 
         log::info!("starting grpc server at {}", addr);
 

@@ -43,6 +43,7 @@ pub struct Chain {
     pub diversifier: String,
     pub consensus_timestamp: u64,
     pub sequence: u64,
+    pub packet_sequence: u64,
     pub port_id: PortId,
     pub connection_details: Option<ChainConnectionDetails>,
 }
@@ -154,6 +155,51 @@ impl ChainService {
         }
     }
 
+    pub fn increment_packet_sequence(&self, chain_id: &ChainId) -> Result<Chain> {
+        let response: Result<Chain, TransactionError<Error>> = self.tree.transaction(|tx| {
+            let optional_bytes = tx.get(chain_id)?;
+
+            match optional_bytes {
+                None => Err(ConflictableTransactionError::Abort(anyhow!(
+                    "chain with id {} not found",
+                    chain_id
+                ))),
+                Some(bytes) => {
+                    let mut chain: Chain = serde_cbor::from_slice(&bytes)
+                        .context("unable to deserialize chain cbor bytes")
+                        .map_err(|e| ConflictableTransactionError::Abort(e))?;
+
+                    chain.packet_sequence += 1;
+
+                    tx.insert(
+                        chain_id.as_bytes(),
+                        serde_cbor::to_vec(&chain)
+                            .context("unable to serialize chain to cbor")
+                            .map_err(|e| ConflictableTransactionError::Abort(e))?,
+                    )?;
+
+                    Ok(chain)
+                }
+            }
+        });
+
+        match response {
+            Ok(chain) => {
+                log::info!(
+                    "successfully incremented packet sequence for chain with id {}",
+                    chain_id
+                );
+                Ok(chain)
+            }
+            Err(TransactionError::Storage(err)) => {
+                Err(Error::from(err).context("storage error while executing transaction"))
+            }
+            Err(TransactionError::Abort(err)) => {
+                Err(err.context("abort error while executing transaction"))
+            }
+        }
+    }
+
     pub fn add_connection_details(
         &self,
         chain_id: &ChainId,
@@ -229,6 +275,7 @@ impl ChainService {
             .context("unable to convert unix timestamp to u64")?;
 
         let sequence = 1;
+        let packet_sequence = 1;
 
         let chain = Chain {
             id: chain_id.clone(),
@@ -244,6 +291,7 @@ impl ChainService {
             diversifier,
             consensus_timestamp,
             sequence,
+            packet_sequence,
             port_id,
             connection_details: None,
         };

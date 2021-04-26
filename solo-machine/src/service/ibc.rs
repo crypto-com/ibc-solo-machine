@@ -22,7 +22,10 @@ use crate::{
 
 use self::ibc_server::Ibc;
 
-use super::chain::{ChainConnectionDetails, ChainService};
+use super::{
+    bank::BankService,
+    chain::{ChainConnectionDetails, ChainService},
+};
 
 const DEFAULT_MEMO: &str = "solo-machine-memo";
 
@@ -30,6 +33,7 @@ pub struct IbcService {
     msg_handler: MsgHandler,
     query_handler: QueryHandler,
     chain_service: ChainService,
+    bank_service: BankService,
 }
 
 impl IbcService {
@@ -38,12 +42,49 @@ impl IbcService {
         msg_handler: MsgHandler,
         query_handler: QueryHandler,
         chain_service: ChainService,
+        bank_service: BankService,
     ) -> Self {
         Self {
             msg_handler,
             query_handler,
             chain_service,
+            bank_service,
         }
+    }
+
+    async fn send_to_chain(
+        &self,
+        chain_id: ChainId,
+        mnemonic: Mnemonic,
+        memo: String,
+        amount: u64,
+        denom: String,
+        receiver: String,
+    ) -> Result<(), Error> {
+        let chain = self
+            .chain_service
+            .get(&chain_id)?
+            .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+
+        self.bank_service
+            .burn(&mnemonic, &chain.account_prefix, amount.into(), &denom)?;
+
+        let rpc_client =
+            HttpClient::new(chain.rpc_addr.as_str()).context("unable to connect to rpc client")?;
+        let transaction_builder =
+            TransactionBuilder::new(&self.chain_service, &chain_id, &mnemonic, &memo);
+
+        let msg = transaction_builder
+            .msg_token_transfer(&rpc_client, amount, denom, receiver)
+            .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        Ok(())
     }
 
     async fn connect(
@@ -332,6 +373,34 @@ impl Ibc for IbcService {
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_string());
 
         self.connect(chain_id, mnemonic, memo)
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
+        Ok(Response::new(Default::default()))
+    }
+
+    async fn send_to_chain(
+        &self,
+        request: Request<SendToChainRequest>,
+    ) -> Result<Response<SendToChainResponse>, Status> {
+        let request = request.into_inner();
+
+        let chain_id: ChainId = request
+            .chain_id
+            .parse()
+            .map_err(|e: Error| Status::invalid_argument(e.to_string()))?;
+
+        let mnemonic: Mnemonic = Mnemonic::from_phrase(&request.mnemonic, Language::English)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_string());
+
+        let amount = request.amount;
+        let denom = request.denom;
+
+        let receiver_address = request.receiver_address;
+
+        self.send_to_chain(chain_id, mnemonic, memo, amount, denom, receiver_address)
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
