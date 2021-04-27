@@ -33,6 +33,10 @@ message AddChainRequest {
     optional string diversifier = 9;
     // Port ID of IBC channel
     optional string port_id = 10;
+    // Trusted height of chain for light client
+    optional uint32 trusted_height = 11;
+    // Trusted hash of chain for light client
+    optional string trusted_hash = 12;
 }
 
 message AddChainResponse {
@@ -77,10 +81,18 @@ message QueryChainResponse {
     google.protobuf.Duration rpc_timeout = 10;
     // Diversifier for solo machine
     string diversifier = 11;
+    // Current sequence of solo machine
+    uint64 sequence = 12;
+    // Current packet sequence of solo machine
+    uint64 packet_sequence = 13;
     // Port ID of IBC channel
-    string port_id = 12;
+    string port_id = 14;
+    // Trusted height of chain for light client
+    optional uint64 trusted_height = 15;
+    // Trusted hash of chain for light client
+    optional string trusted_hash = 16;
     // Connection details of this chain
-    ConnectionDetails connection_details = 13;
+    ConnectionDetails connection_details = 17;
 }
 
 message ConnectionDetails {

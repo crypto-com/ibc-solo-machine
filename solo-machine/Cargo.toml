@@ -24,6 +24,7 @@ serde_json = "1.0.64"
 sled = "0.34.6"
 structopt = "0.3.21"
 tendermint = "0.19.0"
+tendermint-light-client = "0.19.0"
 tendermint-rpc = { version = "0.19.0", features = ["http-client"] }
 time = "0.2.26"
 tiny-bip39 = "0.8.0"

@@ -15,7 +15,7 @@ use sled::{
     transaction::{ConflictableTransactionError, TransactionError},
     Tree,
 };
-use tendermint::node::Id as NodeId;
+use tendermint::{block::Height as BlockHeight, node::Id as NodeId, Hash as TendermintHash};
 use tendermint_rpc::{Client, HttpClient};
 use time::OffsetDateTime;
 use tonic::{Request, Response, Status};
@@ -45,6 +45,8 @@ pub struct Chain {
     pub sequence: u64,
     pub packet_sequence: u64,
     pub port_id: PortId,
+    pub trusted_height: Option<BlockHeight>,
+    pub trusted_hash: Option<TendermintHash>,
     pub connection_details: Option<ChainConnectionDetails>,
 }
 
@@ -122,7 +124,7 @@ impl ChainService {
                 Some(bytes) => {
                     let mut chain: Chain = serde_cbor::from_slice(&bytes)
                         .context("unable to deserialize chain cbor bytes")
-                        .map_err(|e| ConflictableTransactionError::Abort(e))?;
+                        .map_err(ConflictableTransactionError::Abort)?;
 
                     chain.sequence += 1;
 
@@ -130,7 +132,7 @@ impl ChainService {
                         chain_id.as_bytes(),
                         serde_cbor::to_vec(&chain)
                             .context("unable to serialize chain to cbor")
-                            .map_err(|e| ConflictableTransactionError::Abort(e))?,
+                            .map_err(ConflictableTransactionError::Abort)?,
                     )?;
 
                     Ok(chain)
@@ -167,7 +169,7 @@ impl ChainService {
                 Some(bytes) => {
                     let mut chain: Chain = serde_cbor::from_slice(&bytes)
                         .context("unable to deserialize chain cbor bytes")
-                        .map_err(|e| ConflictableTransactionError::Abort(e))?;
+                        .map_err(ConflictableTransactionError::Abort)?;
 
                     chain.packet_sequence += 1;
 
@@ -175,7 +177,7 @@ impl ChainService {
                         chain_id.as_bytes(),
                         serde_cbor::to_vec(&chain)
                             .context("unable to serialize chain to cbor")
-                            .map_err(|e| ConflictableTransactionError::Abort(e))?,
+                            .map_err(ConflictableTransactionError::Abort)?,
                     )?;
 
                     Ok(chain)
@@ -216,7 +218,7 @@ impl ChainService {
                 Some(bytes) => {
                     let mut chain: Chain = serde_cbor::from_slice(&bytes)
                         .context("unable to deserialize chain cbor bytes")
-                        .map_err(|e| ConflictableTransactionError::Abort(e))?;
+                        .map_err(ConflictableTransactionError::Abort)?;
 
                     chain.connection_details = Some(connection_details.clone());
 
@@ -224,7 +226,7 @@ impl ChainService {
                         chain_id.as_bytes(),
                         serde_cbor::to_vec(&chain)
                             .context("unable to serialize chain to cbor")
-                            .map_err(|e| ConflictableTransactionError::Abort(e))?,
+                            .map_err(ConflictableTransactionError::Abort)?,
                     )?;
 
                     Ok(())
@@ -262,6 +264,8 @@ impl ChainService {
         rpc_timeout: Duration,
         diversifier: String,
         port_id: PortId,
+        trusted_height: Option<BlockHeight>,
+        trusted_hash: Option<TendermintHash>,
     ) -> Result<ChainId> {
         let tendermint_client = HttpClient::new(rpc_addr.as_str())?;
         let status = tendermint_client.status().await?;
@@ -293,6 +297,8 @@ impl ChainService {
             sequence,
             packet_sequence,
             port_id,
+            trusted_height,
+            trusted_hash,
             connection_details: None,
         };
 
@@ -384,6 +390,14 @@ impl IChain for ChainService {
             .parse()
             .map_err(|e| Status::invalid_argument(format!("invalid port id: {}", e)))?;
 
+        let trusted_height = request.trusted_height.map(Into::into);
+
+        let trusted_hash = request
+            .trusted_hash
+            .map(|hash| hash.parse())
+            .transpose()
+            .map_err(|e| Status::invalid_argument(format!("invalid trusted hash: {}", e)))?;
+
         let chain_id = self
             .add(
                 grpc_addr,
@@ -396,6 +410,8 @@ impl IChain for ChainService {
                 rpc_timeout,
                 diversifier,
                 port_id,
+                trusted_height,
+                trusted_hash,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -438,7 +454,11 @@ impl IChain for ChainService {
             max_clock_drift: Some(chain.max_clock_drift.into()),
             rpc_timeout: Some(chain.rpc_timeout.into()),
             diversifier: chain.diversifier.to_string(),
+            sequence: chain.sequence,
+            packet_sequence: chain.packet_sequence,
             port_id: chain.port_id.to_string(),
+            trusted_height: chain.trusted_height.as_ref().map(BlockHeight::value),
+            trusted_hash: chain.trusted_hash.as_ref().map(ToString::to_string),
             connection_details: chain.connection_details.as_ref().map(Into::into),
         };
 

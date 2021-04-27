@@ -207,10 +207,10 @@ impl IbcService {
         Ok(())
     }
 
-    async fn create_solo_machine_client<'a, C>(
+    async fn create_solo_machine_client<C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder<'a>,
+        transaction_builder: &TransactionBuilder<'_>,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
@@ -226,10 +226,10 @@ impl IbcService {
         extract_attribute(&response.deliver_tx.events, "create_client", "client_id")?.parse()
     }
 
-    async fn create_tendermint_client<'a, C>(
+    async fn create_tendermint_client<C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder<'a>,
+        transaction_builder: &TransactionBuilder<'_>,
     ) -> Result<ClientId, Error>
     where
         C: Client + Send + Sync,
@@ -242,10 +242,10 @@ impl IbcService {
             .create_client(&client_state, &consensus_state)
     }
 
-    async fn connection_open_init<'a, C>(
+    async fn connection_open_init<C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder<'a>,
+        transaction_builder: &TransactionBuilder<'_>,
         solo_machine_client_id: &ClientId,
         tendermint_client_id: &ClientId,
     ) -> Result<ConnectionId, Error>
@@ -270,10 +270,10 @@ impl IbcService {
         .parse()
     }
 
-    async fn connection_open_ack<'a, C>(
+    async fn connection_open_ack<C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder<'a>,
+        transaction_builder: &TransactionBuilder<'_>,
         solo_machine_connection_id: &ConnectionId,
         tendermint_client_id: &ClientId,
         tendermint_connection_id: &ConnectionId,
@@ -299,10 +299,10 @@ impl IbcService {
         Ok(())
     }
 
-    async fn channel_open_init<'a, C>(
+    async fn channel_open_init<C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder<'a>,
+        transaction_builder: &TransactionBuilder<'_>,
         solo_machine_connection_id: &ConnectionId,
     ) -> Result<ChannelId, Error>
     where
@@ -326,10 +326,10 @@ impl IbcService {
         .parse()
     }
 
-    async fn channel_open_ack<'a, C>(
+    async fn channel_open_ack<C>(
         &self,
         rpc_client: &C,
-        transaction_builder: &TransactionBuilder<'a>,
+        transaction_builder: &TransactionBuilder<'_>,
         solo_machine_channel_id: &ChannelId,
         tendermint_channel_id: &ChannelId,
     ) -> Result<(), Error>
