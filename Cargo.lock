@@ -2049,6 +2049,7 @@ dependencies = [
  "anyhow",
  "cosmos-sdk-proto",
  "env_logger",
+ "hex",
  "ibc",
  "k256",
  "log",

@@ -15,7 +15,7 @@ use sled::{
     transaction::{ConflictableTransactionError, TransactionError},
     Tree,
 };
-use tendermint::{block::Height as BlockHeight, node::Id as NodeId, Hash as TendermintHash};
+use tendermint::{block::Height as BlockHeight, node::Id as NodeId};
 use tendermint_rpc::{Client, HttpClient};
 use time::OffsetDateTime;
 use tonic::{Request, Response, Status};
@@ -45,8 +45,8 @@ pub struct Chain {
     pub sequence: u64,
     pub packet_sequence: u64,
     pub port_id: PortId,
-    pub trusted_height: Option<BlockHeight>,
-    pub trusted_hash: Option<TendermintHash>,
+    pub trusted_height: BlockHeight,
+    pub trusted_hash: Option<[u8; 32]>,
     pub connection_details: Option<ChainConnectionDetails>,
 }
 
@@ -264,8 +264,8 @@ impl ChainService {
         rpc_timeout: Duration,
         diversifier: String,
         port_id: PortId,
-        trusted_height: Option<BlockHeight>,
-        trusted_hash: Option<TendermintHash>,
+        trusted_height: BlockHeight,
+        trusted_hash: Option<[u8; 32]>,
     ) -> Result<ChainId> {
         let tendermint_client = HttpClient::new(rpc_addr.as_str())?;
         let status = tendermint_client.status().await?;
@@ -390,11 +390,32 @@ impl IChain for ChainService {
             .parse()
             .map_err(|e| Status::invalid_argument(format!("invalid port id: {}", e)))?;
 
-        let trusted_height = request.trusted_height.map(Into::into);
+        let trusted_height = request
+            .trusted_height
+            .map(Into::into)
+            .unwrap_or_else(|| 1u32.into());
 
-        let trusted_hash = request
+        let trusted_hash: Option<[u8; 32]> = request
             .trusted_hash
-            .map(|hash| hash.parse())
+            .and_then(|hash| {
+                if hash.is_empty() {
+                    return None;
+                }
+
+                let bytes: Vec<u8> = match hex::decode(&hash) {
+                    Ok(bytes) => bytes,
+                    Err(e) => return Some(Err(anyhow!("invalid trusted hash hex bytes: {}", e))),
+                };
+
+                if bytes.len() != 32 {
+                    return Some(Err(anyhow!("trusted hash length should be 32")));
+                }
+
+                let mut trusted_hash = [0; 32];
+                trusted_hash.clone_from_slice(&bytes);
+
+                Some(Ok(trusted_hash))
+            })
             .transpose()
             .map_err(|e| Status::invalid_argument(format!("invalid trusted hash: {}", e)))?;
 
@@ -457,8 +478,8 @@ impl IChain for ChainService {
             sequence: chain.sequence,
             packet_sequence: chain.packet_sequence,
             port_id: chain.port_id.to_string(),
-            trusted_height: chain.trusted_height.as_ref().map(BlockHeight::value),
-            trusted_hash: chain.trusted_hash.as_ref().map(ToString::to_string),
+            trusted_height: chain.trusted_height.value(),
+            trusted_hash: chain.trusted_hash.map(hex::encode).unwrap_or_default(),
             connection_details: chain.connection_details.as_ref().map(Into::into),
         };
 

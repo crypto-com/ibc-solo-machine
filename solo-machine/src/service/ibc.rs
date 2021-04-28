@@ -6,9 +6,17 @@ use ibc::{
     core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId},
     proto::proto_encode,
 };
-use tendermint::abci::{
-    responses::Event,
-    tag::{Key, Tag},
+use tendermint::{
+    abci::{
+        responses::Event,
+        tag::{Key, Tag},
+    },
+    trust_threshold::TrustThresholdFraction,
+    Hash as TendermintHash,
+};
+use tendermint_light_client::{
+    builder::LightClientBuilder, light_client::Options, store::memory::MemoryStore,
+    supervisor::Instance,
 };
 use tendermint_rpc::{
     endpoint::broadcast::tx_commit::Response as TxCommitResponse, Client, HttpClient,
@@ -24,7 +32,7 @@ use self::ibc_server::Ibc;
 
 use super::{
     bank::BankService,
-    chain::{ChainConnectionDetails, ChainService},
+    chain::{Chain, ChainConnectionDetails, ChainService},
 };
 
 const DEFAULT_MEMO: &str = "solo-machine-memo";
@@ -102,6 +110,7 @@ impl IbcService {
             HttpClient::new(chain.rpc_addr.as_str()).context("unable to connect to rpc client")?;
         let transaction_builder =
             TransactionBuilder::new(&self.chain_service, &chain_id, &mnemonic, &memo);
+        let mut instance = prepare_light_client(&chain, rpc_client.clone())?;
 
         let solo_machine_client_id = self
             .create_solo_machine_client(&rpc_client, &transaction_builder)
@@ -110,7 +119,7 @@ impl IbcService {
         log::info!("Created solo machine client: {}", solo_machine_client_id);
 
         let tendermint_client_id = self
-            .create_tendermint_client(&rpc_client, &transaction_builder)
+            .create_tendermint_client(&mut instance, &transaction_builder)
             .await?;
 
         log::info!("Created tendermint client: {}", tendermint_client_id);
@@ -226,16 +235,13 @@ impl IbcService {
         extract_attribute(&response.deliver_tx.events, "create_client", "client_id")?.parse()
     }
 
-    async fn create_tendermint_client<C>(
+    async fn create_tendermint_client(
         &self,
-        rpc_client: &C,
+        instance: &mut Instance,
         transaction_builder: &TransactionBuilder<'_>,
-    ) -> Result<ClientId, Error>
-    where
-        C: Client + Send + Sync,
-    {
+    ) -> Result<ClientId, Error> {
         let (client_state, consensus_state) = transaction_builder
-            .msg_create_tendermint_client(rpc_client)
+            .msg_create_tendermint_client(instance)
             .await?;
 
         self.msg_handler
@@ -457,26 +463,32 @@ fn get_attribute(tags: &[Tag], key: &str) -> Result<String, Error> {
     Err(anyhow!("{} not found in tags: {:?}", key, tags))
 }
 
-// fn prepare_light_client(chain: &Chain, rpc_client: HttpClient) -> LightClient {
-//     LightClient::new(
-//         chain.node_id,
-//         Options {
-//             trust_threshold: TrustThreshold::new(
-//                 *chain.trust_level.numer(),
-//                 *chain.trust_level.denom(),
-//             )
-//             .unwrap(),
-//             trusting_period: chain.trusting_period,
-//             clock_drift: chain.max_clock_drift,
-//         },
-//         SystemClock,
-//         basic_bisecting_schedule,
-//         ProdVerifier::default(),
-//         ProdHasher,
-//         prepare_light_client_io(chain, rpc_client),
-//     )
-// }
+fn prepare_light_client(chain: &Chain, rpc_client: HttpClient) -> Result<Instance, Error> {
+    let builder = LightClientBuilder::prod(
+        chain.node_id,
+        rpc_client,
+        Box::new(MemoryStore::new()),
+        Options {
+            trust_threshold: TrustThresholdFraction::new(
+                *chain.trust_level.numer(),
+                *chain.trust_level.denom(),
+            )
+            .unwrap(),
+            trusting_period: chain.trusting_period,
+            clock_drift: chain.max_clock_drift,
+        },
+        Some(chain.rpc_timeout),
+    );
 
-// fn prepare_light_client_io(chain: &Chain, rpc_client: HttpClient) -> ProdIo {
-//     ProdIo::new(chain.node_id, rpc_client, Some(chain.rpc_timeout))
-// }
+    let builder =
+        builder.trust_primary_at(chain.trusted_height, get_trusted_hash(chain.trusted_hash))?;
+
+    Ok(builder.build())
+}
+
+fn get_trusted_hash(trusted_hash: Option<[u8; 32]>) -> TendermintHash {
+    match trusted_hash {
+        None => TendermintHash::None,
+        Some(bytes) => TendermintHash::Sha256(bytes),
+    }
+}

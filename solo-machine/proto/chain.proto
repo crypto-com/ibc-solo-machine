@@ -88,9 +88,9 @@ message QueryChainResponse {
     // Port ID of IBC channel
     string port_id = 14;
     // Trusted height of chain for light client
-    optional uint64 trusted_height = 15;
+    uint64 trusted_height = 15;
     // Trusted hash of chain for light client
-    optional string trusted_hash = 16;
+    string trusted_hash = 16;
     // Connection details of this chain
     ConnectionDetails connection_details = 17;
 }

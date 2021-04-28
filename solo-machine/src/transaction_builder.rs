@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use anyhow::{anyhow, ensure, Context, Result};
 use bip39::Mnemonic;
 use cosmos_sdk_proto::{
@@ -71,7 +69,8 @@ use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
 use prost_types::Duration;
 use serde::{Deserialize, Serialize};
-use tendermint::block::{Header, Height as BlockHeight};
+use tendermint::block::Header;
+use tendermint_light_client::supervisor::Instance;
 use tendermint_rpc::Client;
 
 use crate::{
@@ -138,13 +137,10 @@ impl<'a> TransactionBuilder<'a> {
     }
 
     /// Builds a transaction to create a tendermint client on IBC enabled solo machine
-    pub async fn msg_create_tendermint_client<C>(
+    pub async fn msg_create_tendermint_client(
         &self,
-        rpc_client: &C,
-    ) -> Result<(TendermintClientState, TendermintConsensusState)>
-    where
-        C: Client + Send + Sync,
-    {
+        instance: &mut Instance,
+    ) -> Result<(TendermintClientState, TendermintConsensusState)> {
         let chain = self
             .chain_service
             .get(&self.chain_id)?
@@ -156,7 +152,8 @@ impl<'a> TransactionBuilder<'a> {
         });
 
         let unbonding_period = Some(self.get_unbonding_period(&chain).await?);
-        let latest_height = self.get_latest_height(&chain, rpc_client).await?;
+        let latest_header = get_latest_header(instance)?;
+        let latest_height = get_block_height(&chain, &latest_header);
 
         let client_state = TendermintClientState {
             chain_id: chain.id.to_string(),
@@ -172,8 +169,7 @@ impl<'a> TransactionBuilder<'a> {
             allow_update_after_misbehaviour: false,
         };
 
-        let header = self.get_header(rpc_client, &latest_height).await?;
-        let consensus_state = TendermintConsensusState::from_block_header(header);
+        let consensus_state = TendermintConsensusState::from_block_header(latest_header);
 
         Ok((client_state, consensus_state))
     }
@@ -537,43 +533,24 @@ impl<'a> TransactionBuilder<'a> {
             revision_height,
         })
     }
+}
 
-    async fn get_header<C>(&self, rpc_client: &C, height: &Height) -> Result<Header>
-    where
-        C: Client + Send + Sync,
-    {
-        let response = rpc_client
-            .block(BlockHeight::try_from(height.revision_height).map_err(|e| anyhow!("{}", e))?)
-            .await?;
+fn get_latest_header(instance: &mut Instance) -> Result<Header> {
+    let light_block = instance
+        .light_client
+        .verify_to_highest(&mut instance.state)?;
 
-        Ok(response.block.header)
+    Ok(light_block.signed_header.header)
+}
+
+fn get_block_height(chain: &Chain, header: &Header) -> Height {
+    let revision_number = chain.id.version();
+    let revision_height = header.height.value();
+
+    Height {
+        revision_number,
+        revision_height,
     }
-
-    // fn get_header(
-    //     &self,
-    //     light_client: &LightClient,
-    //     light_client_io: &ProdIo,
-    //     height: &Height,
-    // ) -> Result<Header> {
-    //     let height = height.to_block_height()?;
-    //     let mut state = self.get_light_client_state(light_client_io, height)?;
-    //     let light_block = light_client.verify_to_target(height, &mut state)?;
-
-    //     Ok(light_block.signed_header.header)
-    // }
-
-    // fn get_light_client_state(
-    //     &self,
-    //     light_client_io: &ProdIo,
-    //     height: BlockHeight,
-    // ) -> Result<LightClientState> {
-    //     let trusted_block = light_client_io.fetch_light_block(AtHeight::At(height))?;
-
-    //     let mut store = MemoryStore::new();
-    //     store.insert(trusted_block, Status::Trusted);
-
-    //     Ok(LightClientState::new(store))
-    // }
 }
 
 fn get_packet_commitment_proof(
