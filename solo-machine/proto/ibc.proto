@@ -8,6 +8,9 @@ service Ibc {
 
     // Sends tokens from solo machine to IBC enabled chain
     rpc SendToChain (SendToChainRequest) returns (SendToChainResponse);
+
+    // Receives tokens from IBC enabled chain to solo machine
+    rpc ReceiveFromChain (ReceiveFromChainRequest) returns (ReceiveFromChainResponse);
 }
 
 message ConnectRequest {
@@ -37,3 +40,20 @@ message SendToChainRequest {
 }
 
 message SendToChainResponse {}
+
+message ReceiveFromChainRequest {
+    // Chain ID of IBC enabled chain to send to
+    string chain_id = 1;
+    // Mnemonic phrase
+    string mnemonic = 2;
+    // Memo value to be used in cosmos sdk transaction
+    optional string memo = 3;
+    // Amount of tokens to be sent
+    uint64 amount = 4;
+    // Denom of tokens to be sent
+    string denom = 5;
+    // Receiver address on IBC enabled chain
+    string receiver_address = 6;
+}
+
+message ReceiveFromChainResponse {}

@@ -83,7 +83,7 @@ impl IbcService {
             TransactionBuilder::new(&self.chain_service, &chain_id, &mnemonic, &memo);
 
         let msg = transaction_builder
-            .msg_token_transfer(&rpc_client, amount, denom, receiver)
+            .msg_token_send(&rpc_client, amount, denom, receiver)
             .await?;
 
         let response = rpc_client
@@ -91,6 +91,49 @@ impl IbcService {
             .await?;
 
         ensure_response_success(&response)?;
+
+        Ok(())
+    }
+
+    async fn receive_from_chain(
+        &self,
+        chain_id: ChainId,
+        mnemonic: Mnemonic,
+        memo: String,
+        amount: u64,
+        denom: String,
+        receiver: String,
+    ) -> Result<(), Error> {
+        let chain = self
+            .chain_service
+            .get(&chain_id)?
+            .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+
+        let rpc_client =
+            HttpClient::new(chain.rpc_addr.as_str()).context("unable to connect to rpc client")?;
+        let transaction_builder =
+            TransactionBuilder::new(&self.chain_service, &chain_id, &mnemonic, &memo);
+
+        let msg = transaction_builder.msg_update_solo_machine_client().await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        let msg = transaction_builder
+            .msg_token_receive(amount, &denom, receiver)
+            .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        self.bank_service
+            .mint(&mnemonic, &chain.account_prefix, amount.into(), &denom)?;
 
         Ok(())
     }
@@ -407,6 +450,34 @@ impl Ibc for IbcService {
         let receiver_address = request.receiver_address;
 
         self.send_to_chain(chain_id, mnemonic, memo, amount, denom, receiver_address)
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
+        Ok(Response::new(Default::default()))
+    }
+
+    async fn receive_from_chain(
+        &self,
+        request: Request<ReceiveFromChainRequest>,
+    ) -> Result<Response<ReceiveFromChainResponse>, Status> {
+        let request = request.into_inner();
+
+        let chain_id: ChainId = request
+            .chain_id
+            .parse()
+            .map_err(|e: Error| Status::invalid_argument(e.to_string()))?;
+
+        let mnemonic: Mnemonic = Mnemonic::from_phrase(&request.mnemonic, Language::English)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_string());
+
+        let amount = request.amount;
+        let denom = request.denom;
+
+        let receiver_address = request.receiver_address;
+
+        self.receive_from_chain(chain_id, mnemonic, memo, amount, denom, receiver_address)
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 

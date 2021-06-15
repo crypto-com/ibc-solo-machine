@@ -229,3 +229,15 @@ impl PacketCommitmentPath {
         )
     }
 }
+
+impl_path!("Denom trace of tokens transferred to IBC chain", DenomTrace);
+
+impl DenomTrace {
+    pub fn new(port_id: &PortId, channel_id: &ChannelId, denom: &Identifier) -> Self {
+        Self(
+            format!("{}/{}/{}", port_id, channel_id, denom)
+                .parse()
+                .unwrap(),
+        )
+    }
+}

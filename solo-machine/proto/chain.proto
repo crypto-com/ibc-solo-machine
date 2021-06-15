@@ -10,6 +10,9 @@ service Chain {
 
     // Fetches IBC enabled chain details
     rpc Query (QueryChainRequest) returns (QueryChainResponse);
+
+    // Returns the denom hash for a denom on IBC enabled chain after transferring token
+    rpc GetDenomHash (GetDenomHashRequest) returns (GetDenomHashResponse);
 }
 
 message AddChainRequest {
@@ -108,4 +111,16 @@ message ConnectionDetails {
     string solo_machine_channel_id = 5;
     // Channel ID of IBC enabled chain on solo machine
     string tendermint_channel_id = 6;
+}
+
+message GetDenomHashRequest {
+    // Chain ID
+    string chain_id = 1;
+    // Denom of tokens on solo machine
+    string denom = 2;
+}
+
+message GetDenomHashResponse {
+    // Hash of denom on IBC enabled chain. `None` if connection is not yes established
+    optional string denom_hash = 1;
 }

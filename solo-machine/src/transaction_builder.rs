@@ -1,4 +1,4 @@
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use bip39::Mnemonic;
 use cosmos_sdk_proto::{
     cosmos::{
@@ -22,13 +22,14 @@ use cosmos_sdk_proto::{
         },
     },
     ibc::{
+        applications::transfer::v1::MsgTransfer,
         core::{
             channel::v1::{
                 Channel, Counterparty as ChannelCounterparty, MsgChannelOpenAck,
                 MsgChannelOpenInit, MsgRecvPacket, Order as ChannelOrder, Packet,
                 State as ChannelState,
             },
-            client::v1::{Height, MsgCreateClient},
+            client::v1::{Height, MsgCreateClient, MsgUpdateClient},
             commitment::v1::MerklePrefix,
             connection::v1::{
                 Counterparty as ConnectionCounterparty, MsgConnectionOpenAck,
@@ -37,8 +38,8 @@ use cosmos_sdk_proto::{
         },
         lightclients::solomachine::v1::{
             ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
-            ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType, SignBytes,
-            TimestampedSignatureData,
+            ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
+            Header as SoloMachineHeader, HeaderData, SignBytes, TimestampedSignatureData,
         },
         lightclients::{
             solomachine::v1::{ChannelStateData, PacketCommitmentData},
@@ -67,7 +68,7 @@ use ibc::{
 };
 use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
-use prost_types::Duration;
+use prost_types::{Any, Duration};
 use serde::{Deserialize, Serialize};
 use tendermint::block::Header;
 use tendermint_light_client::supervisor::Instance;
@@ -136,6 +137,59 @@ impl<'a> TransactionBuilder<'a> {
         self.build(&chain, &[message]).await
     }
 
+    /// Builds a transaction to update solo machine client on IBC enabled chain
+    pub async fn msg_update_solo_machine_client(&self) -> Result<TxRaw> {
+        let mut chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
+        if chain.connection_details.is_none() {
+            bail!(
+                "connection details not found for chain with id {}",
+                chain.id
+            );
+        }
+
+        let any_public_key = self.mnemonic.to_public_key()?.to_any()?;
+
+        let sequence = chain.sequence;
+
+        let signature = get_header_proof(
+            &chain,
+            &self.mnemonic,
+            Some(any_public_key.clone()),
+            chain.diversifier.clone(),
+        )?;
+
+        chain = self.chain_service.increment_sequence(self.chain_id)?;
+
+        let header = SoloMachineHeader {
+            sequence,
+            timestamp: chain.consensus_timestamp,
+            signature,
+            new_public_key: Some(any_public_key),
+            new_diversifier: chain.diversifier.clone(),
+        };
+
+        let any_header = header.to_any()?;
+
+        let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+            anyhow!(
+                "connection details not found for chain with id {}",
+                chain.id
+            )
+        })?;
+
+        let message = MsgUpdateClient {
+            client_id: connection_details.solo_machine_client_id.to_string(),
+            header: Some(any_header),
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
+        };
+
+        self.build(&chain, &[message]).await
+    }
+
     /// Builds a transaction to create a tendermint client on IBC enabled solo machine
     pub async fn msg_create_tendermint_client(
         &self,
@@ -162,7 +216,7 @@ impl<'a> TransactionBuilder<'a> {
             unbonding_period,
             max_clock_drift: Some(chain.max_clock_drift.into()),
             frozen_height: Some(Height::zero()),
-            latest_height: Some(latest_height.clone()),
+            latest_height: Some(latest_height),
             proof_specs: proof_specs(),
             upgrade_path: vec!["upgrade".to_string(), "upgradedIBCState".to_string()],
             allow_update_after_expiry: false,
@@ -220,6 +274,8 @@ impl<'a> TransactionBuilder<'a> {
             .get_client_state(tendermint_client_id)?
             .ok_or_else(|| anyhow!("client for client id {} not found", tendermint_client_id))?;
 
+        let proof_height = Height::new(0, chain.sequence);
+
         let proof_try = get_connection_proof(
             &chain,
             query_handler,
@@ -244,7 +300,7 @@ impl<'a> TransactionBuilder<'a> {
                 features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
             }),
             client_state: Some(tendermint_client_state.to_any()?),
-            proof_height: Some(Height::new(0, chain.sequence)),
+            proof_height: Some(proof_height),
             proof_try,
             proof_client,
             proof_consensus,
@@ -293,6 +349,8 @@ impl<'a> TransactionBuilder<'a> {
             .get(&self.chain_id)?
             .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
 
+        let proof_height = Height::new(0, chain.sequence);
+
         let proof_try =
             get_channel_proof(&chain, query_handler, &self.mnemonic, tendermint_channel_id)?;
         chain = self.chain_service.increment_sequence(&self.chain_id)?;
@@ -302,7 +360,7 @@ impl<'a> TransactionBuilder<'a> {
             channel_id: solo_machine_channel_id.to_string(),
             counterparty_channel_id: tendermint_channel_id.to_string(),
             counterparty_version: "ics20-1".to_string(),
-            proof_height: Some(Height::new(0, chain.sequence)),
+            proof_height: Some(proof_height),
             proof_try,
             signer: self.mnemonic.account_address(&chain.account_prefix)?,
         };
@@ -310,7 +368,7 @@ impl<'a> TransactionBuilder<'a> {
         self.build(&chain, &[message]).await
     }
 
-    pub async fn msg_token_transfer<C>(
+    pub async fn msg_token_send<C>(
         &self,
         rpc_client: &C,
         amount: u64,
@@ -357,14 +415,59 @@ impl<'a> TransactionBuilder<'a> {
 
         let proof_commitment = get_packet_commitment_proof(&chain, &self.mnemonic, &packet)?;
 
+        let proof_height = Height::new(0, chain.sequence);
+
         chain = self.chain_service.increment_sequence(&chain.id)?;
         chain = self.chain_service.increment_packet_sequence(&chain.id)?;
 
         let message = MsgRecvPacket {
             packet: Some(packet),
             proof_commitment,
-            proof_height: Some(Height::new(0, chain.sequence)),
+            proof_height: Some(proof_height),
             signer: self.mnemonic.account_address(&chain.account_prefix)?,
+        };
+
+        self.build(&chain, &[message]).await
+    }
+
+    pub async fn msg_token_receive(
+        &self,
+        amount: u64,
+        denom: &str,
+        receiver: String,
+    ) -> Result<TxRaw> {
+        let chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
+        let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+            anyhow!(
+                "connection details not found for chain with id {}",
+                chain.id
+            )
+        })?;
+
+        let denom = chain
+            .get_ibc_denom(denom.parse().context("invalid denom")?)
+            .ok_or_else(|| {
+                anyhow!(
+                    "connection is not established with chain with id {}",
+                    self.chain_id
+                )
+            })?;
+
+        let message = MsgTransfer {
+            source_port: chain.port_id.to_string(),
+            source_channel: connection_details.solo_machine_channel_id.to_string(),
+            token: Some(Coin {
+                amount: amount.to_string(),
+                denom,
+            }),
+            sender: self.mnemonic.account_address(&chain.account_prefix)?,
+            receiver,
+            timeout_height: Some(Height::new(0, chain.sequence + 1)),
+            timeout_timestamp: 0,
         };
 
         self.build(&chain, &[message]).await
@@ -591,7 +694,7 @@ fn get_packet_commitment_proof(
         data: packet_commitment_data_bytes,
     };
 
-    sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(chain, mnemonic, sign_bytes)
 }
 
 fn get_channel_proof(
@@ -628,7 +731,7 @@ fn get_channel_proof(
         data: channel_state_data_bytes,
     };
 
-    sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(chain, mnemonic, sign_bytes)
 }
 
 fn get_connection_proof(
@@ -659,7 +762,7 @@ fn get_connection_proof(
         data: connection_state_data_bytes,
     };
 
-    sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(chain, mnemonic, sign_bytes)
 }
 
 fn get_client_proof(
@@ -691,7 +794,7 @@ fn get_client_proof(
         data: client_state_data_bytes,
     };
 
-    sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(chain, mnemonic, sign_bytes)
 }
 
 fn get_consensus_proof(
@@ -737,10 +840,45 @@ fn get_consensus_proof(
         data: consensus_state_data_bytes,
     };
 
-    sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(chain, mnemonic, sign_bytes)
 }
 
-fn sign(chain: &Chain, mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec<u8>> {
+fn get_header_proof(
+    chain: &Chain,
+    mnemonic: &Mnemonic,
+    new_public_key: Option<Any>,
+    new_diversifier: String,
+) -> Result<Vec<u8>> {
+    let header_data = HeaderData {
+        new_pub_key: new_public_key,
+        new_diversifier,
+    };
+
+    let header_data_bytes = proto_encode(&header_data)?;
+
+    let sign_bytes = SignBytes {
+        sequence: chain.sequence,
+        timestamp: chain.consensus_timestamp,
+        diversifier: chain.diversifier.to_owned(),
+        data_type: DataType::Header.into(),
+        data: header_data_bytes,
+    };
+
+    sign(mnemonic, sign_bytes)
+}
+
+fn timestamped_sign(chain: &Chain, mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec<u8>> {
+    let signature_data = sign(mnemonic, sign_bytes)?;
+
+    let timestamped_signature_data = TimestampedSignatureData {
+        signature_data,
+        timestamp: chain.consensus_timestamp,
+    };
+
+    proto_encode(&timestamped_signature_data)
+}
+
+fn sign(mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec<u8>> {
     let sign_bytes = proto_encode(&sign_bytes)?;
     let signature: Signature = mnemonic.to_signing_key()?.sign(&sign_bytes);
     let signature_bytes: Vec<u8> = signature.as_ref().to_vec();
@@ -752,14 +890,7 @@ fn sign(chain: &Chain, mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec
         })),
     };
 
-    let signature_data_bytes = proto_encode(&signature_data)?;
-
-    let timestamped_signature_data = TimestampedSignatureData {
-        signature_data: signature_data_bytes,
-        timestamp: chain.consensus_timestamp,
-    };
-
-    proto_encode(&timestamped_signature_data)
+    proto_encode(&signature_data)
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -6,11 +6,15 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Error, Result};
-use ibc::core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, PortId};
+use ibc::core::ics24_host::{
+    identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier, PortId},
+    path::DenomTrace,
+};
 use num_rational::{ParseRatioError, Ratio};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sled::{
     transaction::{ConflictableTransactionError, TransactionError},
     Tree,
@@ -48,6 +52,24 @@ pub struct Chain {
     pub trusted_height: BlockHeight,
     pub trusted_hash: Option<[u8; 32]>,
     pub connection_details: Option<ChainConnectionDetails>,
+}
+
+impl Chain {
+    /// Returns the IBC denom of given denomination based on connection details. Returns `None` if connection details
+    /// are not present.
+    pub fn get_ibc_denom(&self, denom: Identifier) -> Option<String> {
+        let connection_details = self.connection_details.as_ref()?;
+
+        let denom_trace = DenomTrace::new(
+            &self.port_id,
+            &connection_details.solo_machine_channel_id,
+            &denom,
+        );
+
+        let hash = Sha256::digest(&denom_trace.to_string().as_bytes());
+
+        Some(format!("ibc/{}", hex::encode_upper(hash)))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -484,5 +506,30 @@ impl IChain for ChainService {
         };
 
         Ok(Response::new(response))
+    }
+
+    async fn get_denom_hash(
+        &self,
+        request: Request<GetDenomHashRequest>,
+    ) -> Result<Response<GetDenomHashResponse>, Status> {
+        let request = request.into_inner();
+
+        let chain_id: ChainId = request
+            .chain_id
+            .parse()
+            .map_err(|e: Error| Status::invalid_argument(e.to_string()))?;
+        let denom: Identifier = request
+            .denom
+            .parse()
+            .map_err(|e: Error| Status::invalid_argument(e.to_string()))?;
+
+        let chain = self
+            .get(&chain_id)
+            .map_err(|e| Status::internal(e.to_string()))?
+            .ok_or_else(|| Status::not_found(format!("details for {} not found", chain_id)))?;
+
+        Ok(Response::new(GetDenomHashResponse {
+            denom_hash: chain.get_ibc_denom(denom),
+        }))
     }
 }
