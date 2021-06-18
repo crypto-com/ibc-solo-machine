@@ -241,3 +241,21 @@ impl DenomTrace {
         )
     }
 }
+
+impl_path!(
+    "Path for storing packet acknowledgements",
+    PacketAcknowledgementPath
+);
+
+impl PacketAcknowledgementPath {
+    pub fn new(port_id: &PortId, channel_id: &ChannelId, packet_sequence: u64) -> Self {
+        Self(
+            format!(
+                "acks/ports/{}/channels/{}/sequences/{}",
+                port_id, channel_id, packet_sequence
+            )
+            .parse()
+            .unwrap(),
+        )
+    }
+}

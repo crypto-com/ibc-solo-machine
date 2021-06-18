@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, convert::TryFrom};
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, ensure, Context, Error};
 use cosmos_sdk_proto::ibc::core::client::v1::Height;
 use tendermint::block::Height as BlockHeight;
 
@@ -22,6 +22,8 @@ pub trait IHeight: Sized {
     fn to_string(&self) -> String;
 
     fn to_block_height(&self) -> Result<BlockHeight, Error>;
+
+    fn from_str(height: &str) -> Result<Self, Error>;
 }
 
 impl IHeight for Height {
@@ -71,5 +73,19 @@ impl IHeight for Height {
     fn to_block_height(&self) -> Result<BlockHeight, Error> {
         BlockHeight::try_from(self.revision_height)
             .map_err(|e| anyhow!("invalid block height: {}", e))
+    }
+
+    fn from_str(height: &str) -> Result<Self, Error> {
+        let split: Vec<&str> = height.split('-').collect();
+
+        ensure!(
+            split.len() == 2,
+            "height should be of format {revision_number}-{revision_height}"
+        );
+
+        Ok(Height {
+            revision_number: split[0].parse().context("invalid revision number")?,
+            revision_height: split[1].parse().context("invalid revision height")?,
+        })
     }
 }

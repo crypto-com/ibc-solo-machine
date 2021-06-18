@@ -25,9 +25,9 @@ use cosmos_sdk_proto::{
         applications::transfer::v1::MsgTransfer,
         core::{
             channel::v1::{
-                Channel, Counterparty as ChannelCounterparty, MsgChannelOpenAck,
-                MsgChannelOpenInit, MsgRecvPacket, Order as ChannelOrder, Packet,
-                State as ChannelState,
+                Channel, Counterparty as ChannelCounterparty, MsgAcknowledgement,
+                MsgChannelOpenAck, MsgChannelOpenInit, MsgRecvPacket, Order as ChannelOrder,
+                Packet, State as ChannelState,
             },
             client::v1::{Height, MsgCreateClient, MsgUpdateClient},
             commitment::v1::MerklePrefix,
@@ -39,7 +39,8 @@ use cosmos_sdk_proto::{
         lightclients::solomachine::v1::{
             ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
             ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
-            Header as SoloMachineHeader, HeaderData, SignBytes, TimestampedSignatureData,
+            Header as SoloMachineHeader, HeaderData, PacketAcknowledgementData, SignBytes,
+            TimestampedSignatureData,
         },
         lightclients::{
             solomachine::v1::{ChannelStateData, PacketCommitmentData},
@@ -60,7 +61,7 @@ use ibc::{
             identifier::{ChainId, ChannelId, ClientId, ConnectionId},
             path::{
                 ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath,
-                PacketCommitmentPath,
+                PacketAcknowledgementPath, PacketCommitmentPath,
             },
         },
     },
@@ -70,6 +71,7 @@ use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
 use prost_types::{Any, Duration};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tendermint::block::Header;
 use tendermint_light_client::supervisor::Instance;
 use tendermint_rpc::Client;
@@ -473,6 +475,38 @@ impl<'a> TransactionBuilder<'a> {
         self.build(&chain, &[message]).await
     }
 
+    pub async fn msg_token_receive_ack(&self, packet: Packet) -> Result<TxRaw> {
+        let mut chain = self
+            .chain_service
+            .get(&self.chain_id)?
+            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+
+        let proof_height = Height::new(0, chain.sequence);
+
+        let acknowledgement = serde_json::to_vec(&json!({ "result": [1] }))?;
+
+        log::info!("Acknowledgement: {:?}", acknowledgement);
+
+        let proof_acked = get_packet_acknowledgement_proof(
+            &chain,
+            &self.mnemonic,
+            acknowledgement.clone(),
+            packet.sequence,
+        )?;
+
+        chain = self.chain_service.increment_sequence(&chain.id)?;
+
+        let message = MsgAcknowledgement {
+            packet: Some(packet),
+            acknowledgement,
+            proof_acked,
+            proof_height: Some(proof_height),
+            signer: self.mnemonic.account_address(&chain.account_prefix)?,
+        };
+
+        self.build(&chain, &[message]).await
+    }
+
     async fn build<T>(&self, chain: &Chain, messages: &[T]) -> Result<TxRaw>
     where
         T: AnyConvert,
@@ -654,6 +688,46 @@ fn get_block_height(chain: &Chain, header: &Header) -> Height {
         revision_number,
         revision_height,
     }
+}
+
+fn get_packet_acknowledgement_proof(
+    chain: &Chain,
+    mnemonic: &Mnemonic,
+    acknowledgement: Vec<u8>,
+    packet_sequence: u64,
+) -> Result<Vec<u8>> {
+    let mut acknowledgement_path = PacketAcknowledgementPath::new(
+        &chain.port_id,
+        &chain
+            .connection_details
+            .as_ref()
+            .ok_or_else(|| {
+                anyhow!(
+                    "connection details for chain with id {} not found",
+                    chain.id
+                )
+            })?
+            .tendermint_channel_id,
+        packet_sequence,
+    );
+    acknowledgement_path.apply_prefix(&"ibc".parse().unwrap());
+
+    let acknowledgement_data = PacketAcknowledgementData {
+        path: acknowledgement_path.into_bytes(),
+        acknowledgement,
+    };
+
+    let acknowledgement_data_bytes = proto_encode(&acknowledgement_data)?;
+
+    let sign_bytes = SignBytes {
+        sequence: chain.sequence,
+        timestamp: chain.consensus_timestamp,
+        diversifier: chain.diversifier.to_owned(),
+        data_type: DataType::PacketAcknowledgement.into(),
+        data: acknowledgement_data_bytes,
+    };
+
+    timestamped_sign(chain, mnemonic, sign_bytes)
 }
 
 fn get_packet_commitment_proof(

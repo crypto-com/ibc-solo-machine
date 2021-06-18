@@ -40,7 +40,21 @@ impl BankService {
             amount
         );
 
-        let (path, account_address) = get_path(mnemonic, account_prefix, denom)?;
+        let account_address = mnemonic
+            .account_address(account_prefix)
+            .context("unable to compute account address from mnemonic")?;
+
+        self.mint_to(&account_address, amount, denom)
+    }
+
+    pub fn mint_to(
+        &self,
+        account_address: &str,
+        amount: Decimal,
+        denom: &str,
+    ) -> Result<(), Error> {
+        let path = Path::from_str(&format!("balances/{}/{}", account_address, denom))
+            .context("unable to generate storage path from account prefix and denom")?;
 
         let response: Result<(), TransactionError<Error>> = self.tree.transaction(|tree| {
             let current_balance =

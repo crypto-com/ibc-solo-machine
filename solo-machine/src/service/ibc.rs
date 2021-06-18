@@ -1,9 +1,18 @@
 tonic::include_proto!("ibc");
 
+use std::collections::HashMap;
+
 use anyhow::{anyhow, ensure, Context, Error};
 use bip39::{Language, Mnemonic};
+use cosmos_sdk_proto::ibc::{
+    applications::transfer::v1::FungibleTokenPacketData,
+    core::{channel::v1::Packet, client::v1::Height},
+};
 use ibc::{
-    core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId},
+    core::{
+        ics02_client::height::IHeight,
+        ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId},
+    },
     proto::proto_encode,
 };
 use tendermint::{
@@ -132,8 +141,13 @@ impl IbcService {
 
         ensure_response_success(&response)?;
 
-        self.bank_service
-            .mint(&mnemonic, &chain.account_prefix, amount.into(), &denom)?;
+        self.process_packets(
+            &rpc_client,
+            &transaction_builder,
+            &chain,
+            extract_packets(&response)?,
+        )
+        .await?;
 
         Ok(())
     }
@@ -401,6 +415,65 @@ impl IbcService {
 
         Ok(())
     }
+
+    async fn process_packets<C>(
+        &self,
+        rpc_client: &C,
+        transaction_builder: &TransactionBuilder<'_>,
+        chain: &Chain,
+        packets: Vec<Packet>,
+    ) -> Result<(), Error>
+    where
+        C: Client + Send + Sync,
+    {
+        let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+            anyhow!(
+                "connection details for chain with id {} are missing",
+                chain.id
+            )
+        })?;
+
+        for packet in packets {
+            ensure!(
+                chain.port_id.to_string() == packet.source_port,
+                "invalid source port id"
+            );
+            ensure!(
+                connection_details.solo_machine_channel_id.to_string() == packet.source_channel,
+                "invalid source channel id"
+            );
+            ensure!(
+                chain.port_id.to_string() == packet.destination_port,
+                "invalid destination port id"
+            );
+            ensure!(
+                connection_details.tendermint_channel_id.to_string() == packet.destination_channel,
+                "invalid destination channel id"
+            );
+
+            let packet_data = parse_packet_data(&packet.data)?;
+
+            let msg = transaction_builder.msg_token_receive_ack(packet).await?;
+
+            let response = rpc_client
+                .broadcast_tx_commit(proto_encode(&msg)?.into())
+                .await?;
+
+            ensure_response_success(&response)?;
+
+            self.bank_service.mint_to(
+                &packet_data.receiver,
+                packet_data.amount.into(),
+                packet_data
+                    .denom
+                    .split('/')
+                    .last()
+                    .ok_or_else(|| anyhow!("unable to parse denom in packet data"))?,
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
@@ -483,6 +556,85 @@ impl Ibc for IbcService {
 
         Ok(Response::new(Default::default()))
     }
+}
+
+fn parse_packet_data(packet_data: &[u8]) -> Result<FungibleTokenPacketData, Error> {
+    let mut packet_data: HashMap<String, String> =
+        serde_json::from_slice(packet_data).context("invalid packet data")?;
+
+    let data = FungibleTokenPacketData {
+        denom: packet_data
+            .remove("denom")
+            .ok_or_else(|| anyhow!("`denom` is missing in packet data"))?,
+        amount: packet_data
+            .remove("amount")
+            .ok_or_else(|| anyhow!("`amount` is missing in packet data"))?
+            .parse()
+            .context("invalid amount in packet data")?,
+        receiver: packet_data
+            .remove("receiver")
+            .ok_or_else(|| anyhow!("`receiver` is missing in packet data"))?,
+        sender: packet_data
+            .remove("sender")
+            .ok_or_else(|| anyhow!("`sender` is missing in packet data"))?,
+    };
+
+    Ok(data)
+}
+
+fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>, Error> {
+    let mut packets = vec![];
+
+    for event in response.deliver_tx.events.iter() {
+        if event.type_str == "send_packet" {
+            let mut attributes = HashMap::new();
+
+            for tag in event.attributes.iter() {
+                attributes.insert(tag.key.to_string(), tag.value.to_string());
+            }
+
+            let packet = Packet {
+                sequence: attributes
+                    .remove("packet_sequence")
+                    .ok_or_else(|| anyhow!("`packet_sequence` is missing from packet data"))?
+                    .parse()
+                    .context("invalid `packet_sequence`")?,
+                source_port: attributes
+                    .remove("packet_src_port")
+                    .ok_or_else(|| anyhow!("`packet_src_port` is missing from packet data"))?,
+                source_channel: attributes
+                    .remove("packet_src_channel")
+                    .ok_or_else(|| anyhow!("`packet_src_channel` is missing from packet data"))?,
+                destination_port: attributes
+                    .remove("packet_dst_port")
+                    .ok_or_else(|| anyhow!("`packet_dst_port` is missing from packet data"))?,
+                destination_channel: attributes
+                    .remove("packet_dst_channel")
+                    .ok_or_else(|| anyhow!("`packet_dst_channel` is missing from packet data"))?,
+                data: attributes
+                    .remove("packet_data")
+                    .ok_or_else(|| anyhow!("`packet_data` is missing from packet data"))?
+                    .into_bytes(),
+                timeout_height: Some(
+                    Height::from_str(&attributes.remove("packet_timeout_height").ok_or_else(
+                        || anyhow!("`packet_timeout_height` is missing from packet data"),
+                    )?)
+                    .context("invalid `packet_timeout_height`")?,
+                ),
+                timeout_timestamp: attributes
+                    .remove("packet_timeout_timestamp")
+                    .ok_or_else(|| {
+                        anyhow!("`packet_timeout_timestamp` is missing from packet data")
+                    })?
+                    .parse()
+                    .context("invalid `packet_timeout_timestamp`")?,
+            };
+
+            packets.push(packet);
+        }
+    }
+
+    Ok(packets)
 }
 
 fn ensure_response_success(response: &TxCommitResponse) -> Result<(), Error> {
