@@ -52,10 +52,10 @@ use cosmos_sdk_proto::{
     },
 };
 use ibc::{
+    client::ics07_tendermint::consensus_state::IConsensusState,
     core::{
         ics02_client::height::IHeight,
         ics04_channel::packet::IPacket,
-        ics07_tendermint::consensus_state::IConsensusState,
         ics23_vector_commitments::proof_specs,
         ics24_host::{
             identifier::{ChainId, ChannelId, ClientId, ConnectionId},
