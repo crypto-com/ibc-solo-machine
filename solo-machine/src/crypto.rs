@@ -10,7 +10,7 @@ pub trait Crypto {
     fn to_signing_key(&self) -> Result<SigningKey>;
 
     fn to_verifying_key(&self) -> Result<VerifyingKey> {
-        self.to_signing_key().map(|key| key.verify_key())
+        self.to_signing_key().map(|key| key.verifying_key())
     }
 
     fn to_public_key(&self) -> Result<PublicKey> {
