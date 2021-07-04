@@ -117,6 +117,12 @@ impl TryFrom<&MerklePath> for Path {
     }
 }
 
+impl From<Path> for String {
+    fn from(path: Path) -> Self {
+        path.0
+    }
+}
+
 macro_rules! impl_path {
     ($doc: expr, $name: ident) => {
         #[doc = $doc]
@@ -151,6 +157,12 @@ macro_rules! impl_path {
         impl DerefMut for $name {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(value: $name) -> Self {
+                value.0.into()
             }
         }
     };

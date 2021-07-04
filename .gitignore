@@ -1,3 +1,4 @@
 /target
 demo
-.solo-machine/
+solo-machine.db*
+.env

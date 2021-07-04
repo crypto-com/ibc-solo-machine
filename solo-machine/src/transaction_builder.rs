@@ -1,5 +1,7 @@
+use std::convert::TryInto;
+
 use anyhow::{anyhow, bail, ensure, Context, Result};
-use bip39::Mnemonic;
+use chrono::{DateTime, Utc};
 use cosmos_sdk_proto::{
     cosmos::{
         auth::v1beta1::{
@@ -36,14 +38,14 @@ use cosmos_sdk_proto::{
                 MsgConnectionOpenInit, Version as ConnectionVersion,
             },
         },
-        lightclients::solomachine::v1::{
-            ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
-            ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
-            Header as SoloMachineHeader, HeaderData, PacketAcknowledgementData, SignBytes,
-            TimestampedSignatureData,
-        },
         lightclients::{
-            solomachine::v1::{ChannelStateData, PacketCommitmentData},
+            solomachine::v1::{
+                ChannelStateData, ClientState as SoloMachineClientState, ClientStateData,
+                ConnectionStateData, ConsensusState as SoloMachineConsensusState,
+                ConsensusStateData, DataType, Header as SoloMachineHeader, HeaderData,
+                PacketAcknowledgementData, PacketCommitmentData, SignBytes,
+                TimestampedSignatureData,
+            },
             tendermint::v1::{
                 ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
                 Fraction,
@@ -58,618 +60,576 @@ use ibc::{
         ics04_channel::packet::IPacket,
         ics23_vector_commitments::proof_specs,
         ics24_host::{
-            identifier::{ChainId, ChannelId, ClientId, ConnectionId},
+            identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
             path::{
                 ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath,
                 PacketAcknowledgementPath, PacketCommitmentPath,
             },
         },
     },
-    proto::{proto_encode, AnyConvert},
+    proto::{cosmos::crypto::secp256k1::PubKey as Secp256k1PubKey, proto_encode, AnyConvert},
 };
-use k256::ecdsa::{signature::Signer, Signature};
 use prost::Message;
 use prost_types::{Any, Duration};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::{Acquire, Executor};
 use tendermint::block::Header;
 use tendermint_light_client::supervisor::Instance;
 use tendermint_rpc::Client;
 
 use crate::{
-    crypto::Crypto,
-    handler::query_handler::QueryHandler,
-    service::chain::{Chain, ChainService},
+    model::{chain, ibc as ibc_handler, Chain},
+    Db, Signer, ToPublicKey,
 };
 
 const DEFAULT_TIMEOUT_HEIGHT_OFFSET: u64 = 10;
 
-pub struct TransactionBuilder<'a> {
-    chain_service: &'a ChainService,
-    chain_id: &'a ChainId,
-    mnemonic: &'a Mnemonic,
-    memo: &'a str,
+/// Builds a transaction to create a solo machine client on IBC enabled chain
+pub async fn msg_create_solo_machine_client(
+    signer: impl Signer,
+    chain: &Chain,
+    memo: String,
+) -> Result<TxRaw> {
+    let any_public_key = to_any_public_key(signer.to_public_key()?)?;
+
+    let consensus_state = SoloMachineConsensusState {
+        public_key: Some(any_public_key),
+        diversifier: chain.config.diversifier.clone(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+    };
+    let any_consensus_state = consensus_state.to_any()?;
+
+    let client_state = SoloMachineClientState {
+        sequence: chain.sequence.into(),
+        frozen_sequence: 0,
+        consensus_state: Some(consensus_state),
+        allow_update_after_proposal: true,
+    };
+    let any_client_state = client_state.to_any()?;
+
+    let message = MsgCreateClient {
+        client_state: Some(any_client_state),
+        consensus_state: Some(any_consensus_state),
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
+
+    build(signer, chain, &[message], memo).await
 }
 
-impl<'a> TransactionBuilder<'a> {
-    pub fn new(
-        chain_service: &'a ChainService,
-        chain_id: &'a ChainId,
-        mnemonic: &'a Mnemonic,
-        memo: &'a str,
-    ) -> Self {
-        Self {
-            chain_service,
-            chain_id,
-            mnemonic,
-            memo,
-        }
+/// Builds a transaction to update solo machine client on IBC enabled chain
+pub async fn msg_update_solo_machine_client<'e>(
+    executor: impl Executor<'e, Database = Db>,
+    signer: impl Signer,
+    chain: &mut Chain,
+    memo: String,
+) -> Result<TxRaw> {
+    if chain.connection_details.is_none() {
+        bail!(
+            "connection details not found for chain with id {}",
+            chain.id
+        );
     }
 
-    /// Builds a transaction to create a solo machine client on IBC enabled chain
-    pub async fn msg_create_solo_machine_client(&self) -> Result<TxRaw> {
-        let chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+    let any_public_key = to_any_public_key(signer.to_public_key()?)?;
 
-        let any_public_key = self.mnemonic.to_public_key()?.to_any()?;
+    let sequence = chain.sequence.into();
 
-        let consensus_state = SoloMachineConsensusState {
-            public_key: Some(any_public_key),
-            diversifier: chain.diversifier.clone(),
-            timestamp: chain.consensus_timestamp,
-        };
-        let any_consensus_state = consensus_state.to_any()?;
+    let signature = get_header_proof(
+        &signer,
+        &chain,
+        Some(any_public_key.clone()),
+        chain.config.diversifier.clone(),
+    )?;
 
-        let client_state = SoloMachineClientState {
-            sequence: chain.sequence,
-            frozen_sequence: 0,
-            consensus_state: Some(consensus_state),
-            allow_update_after_proposal: true,
-        };
-        let any_client_state = client_state.to_any()?;
+    *chain = chain::increment_sequence(executor, &chain.id).await?;
 
-        let message = MsgCreateClient {
-            client_state: Some(any_client_state),
-            consensus_state: Some(any_consensus_state),
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+    let header = SoloMachineHeader {
+        sequence,
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        signature,
+        new_public_key: Some(any_public_key),
+        new_diversifier: chain.config.diversifier.clone(),
+    };
 
-        self.build(&chain, &[message]).await
-    }
+    let any_header = header.to_any()?;
 
-    /// Builds a transaction to update solo machine client on IBC enabled chain
-    pub async fn msg_update_solo_machine_client(&self) -> Result<TxRaw> {
-        let mut chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+    let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+        anyhow!(
+            "connection details not found for chain with id {}",
+            chain.id
+        )
+    })?;
 
-        if chain.connection_details.is_none() {
-            bail!(
-                "connection details not found for chain with id {}",
-                chain.id
-            );
-        }
+    let message = MsgUpdateClient {
+        client_id: connection_details.solo_machine_client_id.to_string(),
+        header: Some(any_header),
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
 
-        let any_public_key = self.mnemonic.to_public_key()?.to_any()?;
+    build(signer, &chain, &[message], memo).await
+}
 
-        let sequence = chain.sequence;
+/// Builds a transaction to create a tendermint client on IBC enabled solo machine
+pub async fn msg_create_tendermint_client(
+    chain: &Chain,
+    instance: &mut Instance,
+) -> Result<(TendermintClientState, TendermintConsensusState)> {
+    let trust_level = Some(Fraction {
+        numerator: *chain.config.trust_level.numer(),
+        denominator: *chain.config.trust_level.denom(),
+    });
 
-        let signature = get_header_proof(
-            &chain,
-            &self.mnemonic,
-            Some(any_public_key.clone()),
-            chain.diversifier.clone(),
-        )?;
+    let unbonding_period = Some(get_unbonding_period(&chain).await?);
+    let latest_header = get_latest_header(instance)?;
+    let latest_height = get_block_height(&chain, &latest_header);
 
-        chain = self.chain_service.increment_sequence(self.chain_id)?;
+    let client_state = TendermintClientState {
+        chain_id: chain.id.to_string(),
+        trust_level,
+        trusting_period: Some(chain.config.trusting_period.into()),
+        unbonding_period,
+        max_clock_drift: Some(chain.config.max_clock_drift.into()),
+        frozen_height: Some(Height::zero()),
+        latest_height: Some(latest_height),
+        proof_specs: proof_specs(),
+        upgrade_path: vec!["upgrade".to_string(), "upgradedIBCState".to_string()],
+        allow_update_after_expiry: false,
+        allow_update_after_misbehaviour: false,
+    };
 
-        let header = SoloMachineHeader {
-            sequence,
-            timestamp: chain.consensus_timestamp,
-            signature,
-            new_public_key: Some(any_public_key),
-            new_diversifier: chain.diversifier.clone(),
-        };
+    let consensus_state = TendermintConsensusState::from_block_header(latest_header);
 
-        let any_header = header.to_any()?;
+    Ok((client_state, consensus_state))
+}
 
-        let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
-            anyhow!(
-                "connection details not found for chain with id {}",
-                chain.id
-            )
-        })?;
-
-        let message = MsgUpdateClient {
-            client_id: connection_details.solo_machine_client_id.to_string(),
-            header: Some(any_header),
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
-
-        self.build(&chain, &[message]).await
-    }
-
-    /// Builds a transaction to create a tendermint client on IBC enabled solo machine
-    pub async fn msg_create_tendermint_client(
-        &self,
-        instance: &mut Instance,
-    ) -> Result<(TendermintClientState, TendermintConsensusState)> {
-        let chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
-
-        let trust_level = Some(Fraction {
-            numerator: *chain.trust_level.numer(),
-            denominator: *chain.trust_level.denom(),
-        });
-
-        let unbonding_period = Some(self.get_unbonding_period(&chain).await?);
-        let latest_header = get_latest_header(instance)?;
-        let latest_height = get_block_height(&chain, &latest_header);
-
-        let client_state = TendermintClientState {
-            chain_id: chain.id.to_string(),
-            trust_level,
-            trusting_period: Some(chain.trusting_period.into()),
-            unbonding_period,
-            max_clock_drift: Some(chain.max_clock_drift.into()),
-            frozen_height: Some(Height::zero()),
-            latest_height: Some(latest_height),
-            proof_specs: proof_specs(),
-            upgrade_path: vec!["upgrade".to_string(), "upgradedIBCState".to_string()],
-            allow_update_after_expiry: false,
-            allow_update_after_misbehaviour: false,
-        };
-
-        let consensus_state = TendermintConsensusState::from_block_header(latest_header);
-
-        Ok((client_state, consensus_state))
-    }
-
-    pub async fn msg_connection_open_init(
-        &self,
-        solo_machine_client_id: &ClientId,
-        tendermint_client_id: &ClientId,
-    ) -> Result<TxRaw> {
-        let chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
-
-        let message = MsgConnectionOpenInit {
-            client_id: solo_machine_client_id.to_string(),
-            counterparty: Some(ConnectionCounterparty {
-                client_id: tendermint_client_id.to_string(),
-                connection_id: "".to_string(),
-                prefix: Some(MerklePrefix {
-                    key_prefix: "ibc".as_bytes().to_vec(),
-                }),
+pub async fn msg_connection_open_init(
+    signer: impl Signer,
+    chain: &Chain,
+    solo_machine_client_id: &ClientId,
+    tendermint_client_id: &ClientId,
+    memo: String,
+) -> Result<TxRaw> {
+    let message = MsgConnectionOpenInit {
+        client_id: solo_machine_client_id.to_string(),
+        counterparty: Some(ConnectionCounterparty {
+            client_id: tendermint_client_id.to_string(),
+            connection_id: "".to_string(),
+            prefix: Some(MerklePrefix {
+                key_prefix: "ibc".as_bytes().to_vec(),
             }),
-            version: Some(ConnectionVersion {
-                identifier: "1".to_string(),
-                features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
-            }),
-            delay_period: 0,
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+        }),
+        version: Some(ConnectionVersion {
+            identifier: "1".to_string(),
+            features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
+        }),
+        delay_period: 0,
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
 
-        self.build(&chain, &[message]).await
-    }
+    build(signer, &chain, &[message], memo).await
+}
 
-    pub async fn msg_connection_open_ack(
-        &self,
-        query_handler: &QueryHandler,
-        solo_machine_connection_id: &ConnectionId,
-        tendermint_client_id: &ClientId,
-        tendermint_connection_id: &ConnectionId,
-    ) -> Result<TxRaw> {
-        let mut chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+pub async fn msg_connection_open_ack<'e>(
+    acquire: impl Acquire<'e, Database = Db>,
+    signer: impl Signer,
+    chain: &mut Chain,
+    solo_machine_connection_id: &ConnectionId,
+    tendermint_client_id: &ClientId,
+    tendermint_connection_id: &ConnectionId,
+    memo: String,
+) -> Result<TxRaw> {
+    let mut executor = acquire.acquire().await?;
 
-        let tendermint_client_state = query_handler
-            .get_client_state(tendermint_client_id)?
+    let tendermint_client_state =
+        ibc_handler::get_tendermint_client_state(&mut *executor, tendermint_client_id)
+            .await?
             .ok_or_else(|| anyhow!("client for client id {} not found", tendermint_client_id))?;
 
-        let proof_height = Height::new(0, chain.sequence);
+    let proof_height = Height::new(0, chain.sequence.into());
 
-        let proof_try = get_connection_proof(
-            &chain,
-            query_handler,
-            &self.mnemonic,
-            tendermint_connection_id,
-        )?;
-        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+    let proof_try =
+        get_connection_proof(&mut *executor, &signer, &chain, tendermint_connection_id).await?;
+    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
 
-        let proof_client =
-            get_client_proof(&chain, query_handler, &self.mnemonic, &tendermint_client_id)?;
-        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+    let proof_client =
+        get_client_proof(&mut *executor, &signer, &chain, &tendermint_client_id).await?;
+    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
 
-        let proof_consensus =
-            get_consensus_proof(&chain, query_handler, &self.mnemonic, &tendermint_client_id)?;
-        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+    let proof_consensus =
+        get_consensus_proof(&mut *executor, &signer, &chain, &tendermint_client_id).await?;
+    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
 
-        let message = MsgConnectionOpenAck {
-            connection_id: solo_machine_connection_id.to_string(),
-            counterparty_connection_id: tendermint_connection_id.to_string(),
-            version: Some(ConnectionVersion {
-                identifier: "1".to_string(),
-                features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
+    let message = MsgConnectionOpenAck {
+        connection_id: solo_machine_connection_id.to_string(),
+        counterparty_connection_id: tendermint_connection_id.to_string(),
+        version: Some(ConnectionVersion {
+            identifier: "1".to_string(),
+            features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
+        }),
+        client_state: Some(tendermint_client_state.to_any()?),
+        proof_height: Some(proof_height),
+        proof_try,
+        proof_client,
+        proof_consensus,
+        consensus_height: tendermint_client_state.latest_height,
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
+
+    build(signer, &chain, &[message], memo).await
+}
+
+pub async fn msg_channel_open_init(
+    signer: impl Signer,
+    chain: &Chain,
+    solo_machine_connection_id: &ConnectionId,
+    memo: String,
+) -> Result<TxRaw> {
+    let message = MsgChannelOpenInit {
+        port_id: chain.config.port_id.to_string(),
+        channel: Some(Channel {
+            state: ChannelState::Init.into(),
+            ordering: ChannelOrder::Unordered.into(),
+            counterparty: Some(ChannelCounterparty {
+                port_id: chain.config.port_id.to_string(),
+                channel_id: "".to_string(),
             }),
-            client_state: Some(tendermint_client_state.to_any()?),
-            proof_height: Some(proof_height),
-            proof_try,
-            proof_client,
-            proof_consensus,
-            consensus_height: tendermint_client_state.latest_height,
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+            connection_hops: vec![solo_machine_connection_id.to_string()],
+            version: "ics20-1".to_string(),
+        }),
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
 
-        self.build(&chain, &[message]).await
-    }
+    build(signer, &chain, &[message], memo).await
+}
 
-    pub async fn msg_channel_open_init(
-        &self,
-        solo_machine_connection_id: &ConnectionId,
-    ) -> Result<TxRaw> {
-        let chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+pub async fn msg_channel_open_ack<'e>(
+    acquire: impl Acquire<'e, Database = Db>,
+    signer: impl Signer,
+    chain: &mut Chain,
+    solo_machine_channel_id: &ChannelId,
+    tendermint_channel_id: &ChannelId,
+    memo: String,
+) -> Result<TxRaw> {
+    let mut executor = acquire.acquire().await?;
 
-        let message = MsgChannelOpenInit {
-            port_id: chain.port_id.to_string(),
-            channel: Some(Channel {
-                state: ChannelState::Init.into(),
-                ordering: ChannelOrder::Unordered.into(),
-                counterparty: Some(ChannelCounterparty {
-                    port_id: chain.port_id.to_string(),
-                    channel_id: "".to_string(),
-                }),
-                connection_hops: vec![solo_machine_connection_id.to_string()],
-                version: "ics20-1".to_string(),
-            }),
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+    let proof_height = Height::new(0, chain.sequence.into());
 
-        self.build(&chain, &[message]).await
-    }
+    let proof_try =
+        get_channel_proof(&mut *executor, &signer, &chain, tendermint_channel_id).await?;
+    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
 
-    pub async fn msg_channel_open_ack(
-        &self,
-        query_handler: &QueryHandler,
-        solo_machine_channel_id: &ChannelId,
-        tendermint_channel_id: &ChannelId,
-    ) -> Result<TxRaw> {
-        let mut chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+    let message = MsgChannelOpenAck {
+        port_id: chain.config.port_id.to_string(),
+        channel_id: solo_machine_channel_id.to_string(),
+        counterparty_channel_id: tendermint_channel_id.to_string(),
+        counterparty_version: "ics20-1".to_string(),
+        proof_height: Some(proof_height),
+        proof_try,
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
 
-        let proof_height = Height::new(0, chain.sequence);
+    build(signer, &chain, &[message], memo).await
+}
 
-        let proof_try =
-            get_channel_proof(&chain, query_handler, &self.mnemonic, tendermint_channel_id)?;
-        chain = self.chain_service.increment_sequence(&self.chain_id)?;
+#[allow(clippy::too_many_arguments)]
+pub async fn msg_token_send<'e, C>(
+    acquire: impl Acquire<'e, Database = Db>,
+    signer: impl Signer,
+    rpc_client: &C,
+    chain: &mut Chain,
+    amount: u32,
+    denom: &Identifier,
+    receiver: String,
+    memo: String,
+) -> Result<TxRaw>
+where
+    C: Client + Send + Sync,
+{
+    let mut executor = acquire.acquire().await?;
 
-        let message = MsgChannelOpenAck {
-            port_id: chain.port_id.to_string(),
-            channel_id: solo_machine_channel_id.to_string(),
-            counterparty_channel_id: tendermint_channel_id.to_string(),
-            counterparty_version: "ics20-1".to_string(),
-            proof_height: Some(proof_height),
-            proof_try,
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+    let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+        anyhow!(
+            "connection details not found for chain with id {}",
+            chain.id
+        )
+    })?;
 
-        self.build(&chain, &[message]).await
-    }
+    let sender = signer.to_account_address(&chain.config.account_prefix)?;
 
-    pub async fn msg_token_send<C>(
-        &self,
-        rpc_client: &C,
-        amount: u64,
-        denom: String,
-        receiver: String,
-    ) -> Result<TxRaw>
-    where
-        C: Client + Send + Sync,
-    {
-        let mut chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+    let packet_data = TokenTransferPacketData {
+        denom: denom.to_string(),
+        amount: amount.into(),
+        sender: sender.clone(),
+        receiver,
+    };
 
-        let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
-            anyhow!(
-                "connection details not found for chain with id {}",
-                chain.id
-            )
-        })?;
+    let packet = Packet {
+        sequence: chain.packet_sequence.into(),
+        source_port: chain.config.port_id.to_string(),
+        source_channel: connection_details.tendermint_channel_id.to_string(),
+        destination_port: chain.config.port_id.to_string(),
+        destination_channel: connection_details.solo_machine_channel_id.to_string(),
+        data: serde_json::to_vec(&packet_data)?,
+        timeout_height: Some(
+            get_latest_height(&chain, rpc_client)
+                .await?
+                .checked_add(DEFAULT_TIMEOUT_HEIGHT_OFFSET)
+                .ok_or_else(|| anyhow!("height addition overflow"))?,
+        ),
+        timeout_timestamp: 0,
+    };
 
-        let packet_data = TokenTransferPacketData {
+    let proof_commitment = get_packet_commitment_proof(&signer, &chain, &packet)?;
+
+    let proof_height = Height::new(0, chain.sequence.into());
+
+    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
+    *chain = chain::increment_packet_sequence(&mut *executor, &chain.id).await?;
+
+    let message = MsgRecvPacket {
+        packet: Some(packet),
+        proof_commitment,
+        proof_height: Some(proof_height),
+        signer: sender,
+    };
+
+    build(signer, &chain, &[message], memo).await
+}
+
+pub async fn msg_token_receive(
+    signer: impl Signer,
+    chain: &Chain,
+    amount: u32,
+    denom: &Identifier,
+    receiver: String,
+    memo: String,
+) -> Result<TxRaw> {
+    let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+        anyhow!(
+            "connection details not found for chain with id {}",
+            chain.id
+        )
+    })?;
+
+    let denom = chain.get_ibc_denom(denom).ok_or_else(|| {
+        anyhow!(
+            "connection is not established with chain with id {}",
+            chain.id
+        )
+    })?;
+
+    let sender = signer.to_account_address(&chain.config.account_prefix)?;
+
+    let message = MsgTransfer {
+        source_port: chain.config.port_id.to_string(),
+        source_channel: connection_details.solo_machine_channel_id.to_string(),
+        token: Some(Coin {
+            amount: amount.to_string(),
             denom,
-            amount,
-            sender: self.mnemonic.account_address(&chain.account_prefix)?,
-            receiver,
-        };
+        }),
+        sender,
+        receiver,
+        timeout_height: Some(Height::new(0, u64::from(chain.sequence) + 1)),
+        timeout_timestamp: 0,
+    };
 
-        let packet = Packet {
-            sequence: chain.packet_sequence,
-            source_port: chain.port_id.to_string(),
-            source_channel: connection_details.tendermint_channel_id.to_string(),
-            destination_port: chain.port_id.to_string(),
-            destination_channel: connection_details.solo_machine_channel_id.to_string(),
-            data: serde_json::to_vec(&packet_data)?,
-            timeout_height: Some(
-                self.get_latest_height(&chain, rpc_client)
-                    .await?
-                    .checked_add(DEFAULT_TIMEOUT_HEIGHT_OFFSET)
-                    .ok_or_else(|| anyhow!("height addition overflow"))?,
-            ),
-            timeout_timestamp: 0,
-        };
+    build(signer, &chain, &[message], memo).await
+}
 
-        let proof_commitment = get_packet_commitment_proof(&chain, &self.mnemonic, &packet)?;
+pub async fn msg_token_receive_ack<'e>(
+    executor: impl Executor<'e, Database = Db>,
+    signer: impl Signer,
+    chain: &mut Chain,
+    packet: Packet,
+    memo: String,
+) -> Result<TxRaw> {
+    let proof_height = Height::new(0, chain.sequence.into());
+    let acknowledgement = serde_json::to_vec(&json!({ "result": [1] }))?;
 
-        let proof_height = Height::new(0, chain.sequence);
+    let proof_acked = get_packet_acknowledgement_proof(
+        &signer,
+        &chain,
+        acknowledgement.clone(),
+        packet.sequence,
+    )?;
 
-        chain = self.chain_service.increment_sequence(&chain.id)?;
-        chain = self.chain_service.increment_packet_sequence(&chain.id)?;
+    *chain = chain::increment_sequence(executor, &chain.id).await?;
 
-        let message = MsgRecvPacket {
-            packet: Some(packet),
-            proof_commitment,
-            proof_height: Some(proof_height),
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+    let message = MsgAcknowledgement {
+        packet: Some(packet),
+        acknowledgement,
+        proof_acked,
+        proof_height: Some(proof_height),
+        signer: signer.to_account_address(&chain.config.account_prefix)?,
+    };
 
-        self.build(&chain, &[message]).await
-    }
+    build(signer, &chain, &[message], memo).await
+}
 
-    pub async fn msg_token_receive(
-        &self,
-        amount: u64,
-        denom: &str,
-        receiver: String,
-    ) -> Result<TxRaw> {
-        let chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+async fn build<T>(signer: impl Signer, chain: &Chain, messages: &[T], memo: String) -> Result<TxRaw>
+where
+    T: AnyConvert,
+{
+    let tx_body = build_tx_body(messages, memo).context("unable to build transaction body")?;
+    let tx_body_bytes = proto_encode(&tx_body)?;
 
-        let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
-            anyhow!(
-                "connection details not found for chain with id {}",
-                chain.id
-            )
-        })?;
+    let (account_number, account_sequence) = get_account_details(&signer, &chain).await?;
 
-        let denom = chain
-            .get_ibc_denom(denom.parse().context("invalid denom")?)
-            .ok_or_else(|| {
-                anyhow!(
-                    "connection is not established with chain with id {}",
-                    self.chain_id
-                )
-            })?;
+    let auth_info =
+        build_auth_info(&signer, &chain, account_sequence).context("unable to build auth info")?;
+    let auth_info_bytes = proto_encode(&auth_info)?;
 
-        let message = MsgTransfer {
-            source_port: chain.port_id.to_string(),
-            source_channel: connection_details.solo_machine_channel_id.to_string(),
-            token: Some(Coin {
-                amount: amount.to_string(),
-                denom,
-            }),
-            sender: self.mnemonic.account_address(&chain.account_prefix)?,
-            receiver,
-            timeout_height: Some(Height::new(0, chain.sequence + 1)),
-            timeout_timestamp: 0,
-        };
+    let signature = build_signature(
+        signer,
+        tx_body_bytes.clone(),
+        auth_info_bytes.clone(),
+        chain.id.to_string(),
+        account_number,
+    )
+    .context("unable to sign transaction")?;
 
-        self.build(&chain, &[message]).await
-    }
+    Ok(TxRaw {
+        body_bytes: tx_body_bytes,
+        auth_info_bytes,
+        signatures: vec![signature],
+    })
+}
 
-    pub async fn msg_token_receive_ack(&self, packet: Packet) -> Result<TxRaw> {
-        let mut chain = self
-            .chain_service
-            .get(&self.chain_id)?
-            .ok_or_else(|| anyhow!("chain with id {} not found", self.chain_id))?;
+fn build_tx_body<T>(messages: &[T], memo: String) -> Result<TxBody>
+where
+    T: AnyConvert,
+{
+    let messages = messages
+        .iter()
+        .map(AnyConvert::to_any)
+        .collect::<Result<_, _>>()?;
 
-        let proof_height = Height::new(0, chain.sequence);
+    Ok(TxBody {
+        messages,
+        memo,
+        timeout_height: 0,
+        extension_options: Default::default(),
+        non_critical_extension_options: Default::default(),
+    })
+}
 
-        let acknowledgement = serde_json::to_vec(&json!({ "result": [1] }))?;
+fn build_auth_info(
+    signer: impl ToPublicKey,
+    chain: &Chain,
+    account_sequence: u64,
+) -> Result<AuthInfo> {
+    let signer_info = SignerInfo {
+        public_key: Some(to_any_public_key(signer.to_public_key()?)?),
+        mode_info: Some(ModeInfo {
+            sum: Some(Sum::Single(Single { mode: 1 })),
+        }),
+        sequence: account_sequence,
+    };
 
-        log::info!("Acknowledgement: {:?}", acknowledgement);
+    let fee = Fee {
+        amount: vec![Coin {
+            denom: chain.config.fee.denom.to_string(),
+            amount: chain.config.fee.amount.to_string(),
+        }],
+        gas_limit: chain.config.fee.gas_limit,
+        payer: "".to_owned(),
+        granter: "".to_owned(),
+    };
 
-        let proof_acked = get_packet_acknowledgement_proof(
-            &chain,
-            &self.mnemonic,
-            acknowledgement.clone(),
-            packet.sequence,
-        )?;
+    Ok(AuthInfo {
+        signer_infos: vec![signer_info],
+        fee: Some(fee),
+    })
+}
 
-        chain = self.chain_service.increment_sequence(&chain.id)?;
+fn build_signature(
+    signer: impl Signer,
+    body_bytes: Vec<u8>,
+    auth_info_bytes: Vec<u8>,
+    chain_id: String,
+    account_number: u64,
+) -> Result<Vec<u8>> {
+    let sign_doc = SignDoc {
+        body_bytes,
+        auth_info_bytes,
+        chain_id,
+        account_number,
+    };
 
-        let message = MsgAcknowledgement {
-            packet: Some(packet),
-            acknowledgement,
-            proof_acked,
-            proof_height: Some(proof_height),
-            signer: self.mnemonic.account_address(&chain.account_prefix)?,
-        };
+    let sign_doc_bytes = proto_encode(&sign_doc)?;
 
-        self.build(&chain, &[message]).await
-    }
+    signer.sign(&sign_doc_bytes)
+}
 
-    async fn build<T>(&self, chain: &Chain, messages: &[T]) -> Result<TxRaw>
-    where
-        T: AnyConvert,
-    {
-        let tx_body = self
-            .build_tx_body(messages)
-            .context("unable to build transaction body")?;
-        let tx_body_bytes = proto_encode(&tx_body)?;
+async fn get_account_details(signer: impl ToPublicKey, chain: &Chain) -> Result<(u64, u64)> {
+    let mut query_client = AuthQueryClient::connect(chain.config.grpc_addr.clone())
+        .await
+        .context(format!(
+            "unable to connect to grpc query client at {}",
+            chain.config.grpc_addr
+        ))?;
 
-        let (account_number, account_sequence) = self.get_account_details(&chain).await?;
+    let account_address = signer.to_account_address(&chain.config.account_prefix)?;
 
-        let auth_info = self
-            .build_auth_info(&chain, account_sequence)
-            .context("unable to build auth info")?;
-        let auth_info_bytes = proto_encode(&auth_info)?;
-
-        let signature = self
-            .build_signature(
-                tx_body_bytes.clone(),
-                auth_info_bytes.clone(),
-                chain.id.to_string(),
-                account_number,
-            )
-            .context("unable to sign transaction")?;
-
-        Ok(TxRaw {
-            body_bytes: tx_body_bytes,
-            auth_info_bytes,
-            signatures: vec![signature],
+    let response = query_client
+        .account(QueryAccountRequest {
+            address: account_address.clone(),
         })
-    }
+        .await?
+        .into_inner()
+        .account
+        .ok_or_else(|| anyhow!("unable to find account with address: {}", account_address))?;
 
-    fn build_tx_body<T>(&self, messages: &[T]) -> Result<TxBody>
-    where
-        T: AnyConvert,
-    {
-        let messages = messages
-            .iter()
-            .map(AnyConvert::to_any)
-            .collect::<Result<_, _>>()?;
+    let account = BaseAccount::decode(response.value.as_slice())?;
 
-        Ok(TxBody {
-            messages,
-            memo: self.memo.to_owned(),
-            timeout_height: 0,
-            extension_options: Default::default(),
-            non_critical_extension_options: Default::default(),
-        })
-    }
+    Ok((account.account_number, account.sequence))
+}
 
-    fn build_auth_info(&self, chain: &Chain, account_sequence: u64) -> Result<AuthInfo> {
-        let signer_info = SignerInfo {
-            public_key: Some(self.mnemonic.to_public_key()?.to_any()?),
-            mode_info: Some(ModeInfo {
-                sum: Some(Sum::Single(Single { mode: 1 })),
-            }),
-            sequence: account_sequence,
-        };
+async fn get_unbonding_period(chain: &Chain) -> Result<Duration> {
+    let mut query_client = StakingQueryClient::connect(chain.config.grpc_addr.clone())
+        .await
+        .context(format!(
+            "unable to connect to grpc query client at {}",
+            chain.config.grpc_addr
+        ))?;
 
-        let fee = Fee {
-            amount: vec![Coin {
-                denom: chain.fee.denom.clone(),
-                amount: chain.fee.amount.to_string(),
-            }],
-            gas_limit: chain.fee.gas_limit,
-            payer: "".to_owned(),
-            granter: "".to_owned(),
-        };
+    query_client
+        .params(QueryParamsRequest::default())
+        .await?
+        .into_inner()
+        .params
+        .ok_or_else(|| anyhow!("staking params are empty"))?
+        .unbonding_time
+        .ok_or_else(|| anyhow!("missing unbonding period in staking params"))
+}
 
-        Ok(AuthInfo {
-            signer_infos: vec![signer_info],
-            fee: Some(fee),
-        })
-    }
+async fn get_latest_height<C>(chain: &Chain, rpc_client: &C) -> Result<Height>
+where
+    C: Client + Send + Sync,
+{
+    let response = rpc_client.status().await?;
 
-    fn build_signature(
-        &self,
-        body_bytes: Vec<u8>,
-        auth_info_bytes: Vec<u8>,
-        chain_id: String,
-        account_number: u64,
-    ) -> Result<Vec<u8>> {
-        let sign_doc = SignDoc {
-            body_bytes,
-            auth_info_bytes,
-            chain_id,
-            account_number,
-        };
-        let sign_doc_bytes = proto_encode(&sign_doc)?;
+    ensure!(
+        !response.sync_info.catching_up,
+        "node at {} running chain {} not caught up",
+        chain.config.rpc_addr,
+        chain.id,
+    );
 
-        let signature: Signature = self.mnemonic.to_signing_key()?.sign(&sign_doc_bytes);
-        Ok(signature.as_ref().to_vec())
-    }
+    let revision_number = response
+        .node_info
+        .network
+        .as_str()
+        .parse::<ChainId>()?
+        .version();
 
-    async fn get_account_details(&self, chain: &Chain) -> Result<(u64, u64)> {
-        let mut query_client = AuthQueryClient::connect(chain.grpc_addr.clone())
-            .await
-            .context(format!(
-                "unable to connect to grpc query client at {}",
-                chain.grpc_addr
-            ))?;
+    let revision_height = response.sync_info.latest_block_height.into();
 
-        let account_address = self.mnemonic.account_address(&chain.account_prefix)?;
-
-        let response = query_client
-            .account(QueryAccountRequest {
-                address: account_address.clone(),
-            })
-            .await?
-            .into_inner()
-            .account
-            .ok_or_else(|| anyhow!("unable to find account with address: {}", account_address))?;
-
-        let account = BaseAccount::decode(response.value.as_slice())?;
-
-        Ok((account.account_number, account.sequence))
-    }
-
-    async fn get_unbonding_period(&self, chain: &Chain) -> Result<Duration> {
-        let mut query_client = StakingQueryClient::connect(chain.grpc_addr.clone())
-            .await
-            .context(format!(
-                "unable to connect to grpc query client at {}",
-                chain.grpc_addr
-            ))?;
-
-        query_client
-            .params(QueryParamsRequest::default())
-            .await?
-            .into_inner()
-            .params
-            .ok_or_else(|| anyhow!("staking params are empty"))?
-            .unbonding_time
-            .ok_or_else(|| anyhow!("missing unbonding period in staking params"))
-    }
-
-    async fn get_latest_height<C>(&self, chain: &Chain, rpc_client: &C) -> Result<Height>
-    where
-        C: Client + Send + Sync,
-    {
-        let response = rpc_client.status().await?;
-
-        ensure!(
-            !response.sync_info.catching_up,
-            "node at {} running chain {} not caught up",
-            chain.rpc_addr,
-            chain.id,
-        );
-
-        let revision_number = response
-            .node_info
-            .network
-            .as_str()
-            .parse::<ChainId>()?
-            .version();
-
-        let revision_height = response.sync_info.latest_block_height.into();
-
-        Ok(Height {
-            revision_number,
-            revision_height,
-        })
-    }
+    Ok(Height {
+        revision_number,
+        revision_height,
+    })
 }
 
 fn get_latest_header(instance: &mut Instance) -> Result<Header> {
@@ -691,13 +651,13 @@ fn get_block_height(chain: &Chain, header: &Header) -> Height {
 }
 
 fn get_packet_acknowledgement_proof(
+    signer: impl Signer,
     chain: &Chain,
-    mnemonic: &Mnemonic,
     acknowledgement: Vec<u8>,
     packet_sequence: u64,
 ) -> Result<Vec<u8>> {
     let mut acknowledgement_path = PacketAcknowledgementPath::new(
-        &chain.port_id,
+        &chain.config.port_id,
         &chain
             .connection_details
             .as_ref()
@@ -720,25 +680,25 @@ fn get_packet_acknowledgement_proof(
     let acknowledgement_data_bytes = proto_encode(&acknowledgement_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::PacketAcknowledgement.into(),
         data: acknowledgement_data_bytes,
     };
 
-    timestamped_sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(signer, chain, sign_bytes)
 }
 
 fn get_packet_commitment_proof(
+    signer: impl Signer,
     chain: &Chain,
-    mnemonic: &Mnemonic,
     packet: &Packet,
 ) -> Result<Vec<u8>> {
     let commitment_bytes = packet.commitment_bytes()?;
 
     let mut commitment_path = PacketCommitmentPath::new(
-        &chain.port_id,
+        &chain.config.port_id,
         &chain
             .connection_details
             .as_ref()
@@ -749,7 +709,7 @@ fn get_packet_commitment_proof(
                 )
             })?
             .tendermint_channel_id,
-        chain.packet_sequence,
+        chain.packet_sequence.into(),
     );
     commitment_path.apply_prefix(&"ibc".parse().unwrap());
 
@@ -761,33 +721,33 @@ fn get_packet_commitment_proof(
     let packet_commitment_data_bytes = proto_encode(&packet_commitment_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::PacketCommitment.into(),
         data: packet_commitment_data_bytes,
     };
 
-    timestamped_sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(signer, chain, sign_bytes)
 }
 
-fn get_channel_proof(
+async fn get_channel_proof<'e>(
+    executor: impl Executor<'e, Database = Db>,
+    signer: impl Signer,
     chain: &Chain,
-    query_handler: &QueryHandler,
-    mnemonic: &Mnemonic,
     channel_id: &ChannelId,
 ) -> Result<Vec<u8>> {
-    let channel = query_handler
-        .get_channel(&chain.port_id, channel_id)?
+    let channel = ibc_handler::get_channel(executor, &chain.config.port_id, channel_id)
+        .await?
         .ok_or_else(|| {
             anyhow!(
                 "channel with port id {} and channel id {} not found",
-                chain.port_id,
+                chain.config.port_id,
                 channel_id
             )
         })?;
 
-    let mut channel_path = ChannelPath::new(&chain.port_id, channel_id);
+    let mut channel_path = ChannelPath::new(&chain.config.port_id, channel_id);
     channel_path.apply_prefix(&"ibc".parse().unwrap());
 
     let channel_state_data = ChannelStateData {
@@ -798,24 +758,24 @@ fn get_channel_proof(
     let channel_state_data_bytes = proto_encode(&channel_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::ChannelState.into(),
         data: channel_state_data_bytes,
     };
 
-    timestamped_sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(signer, chain, sign_bytes)
 }
 
-fn get_connection_proof(
+async fn get_connection_proof<'e>(
+    executor: impl Executor<'e, Database = Db>,
+    signer: impl Signer,
     chain: &Chain,
-    query_handler: &QueryHandler,
-    mnemonic: &Mnemonic,
     connection_id: &ConnectionId,
 ) -> Result<Vec<u8>> {
-    let connection = query_handler
-        .get_connection(connection_id)?
+    let connection = ibc_handler::get_connection(executor, connection_id)
+        .await?
         .ok_or_else(|| anyhow!("connection with id {} not found", connection_id))?;
 
     let mut connection_path = ConnectionPath::new(connection_id);
@@ -829,24 +789,24 @@ fn get_connection_proof(
     let connection_state_data_bytes = proto_encode(&connection_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::ConnectionState.into(),
         data: connection_state_data_bytes,
     };
 
-    timestamped_sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(signer, chain, sign_bytes)
 }
 
-fn get_client_proof(
+async fn get_client_proof<'e>(
+    executor: impl Executor<'e, Database = Db>,
+    signer: impl Signer,
     chain: &Chain,
-    query_handler: &QueryHandler,
-    mnemonic: &Mnemonic,
     client_id: &ClientId,
 ) -> Result<Vec<u8>> {
-    let client_state = query_handler
-        .get_client_state(client_id)?
+    let client_state = ibc_handler::get_tendermint_client_state(executor, client_id)
+        .await?
         .ok_or_else(|| anyhow!("client with id {} not found", client_id))?
         .to_any()?;
 
@@ -861,40 +821,43 @@ fn get_client_proof(
     let client_state_data_bytes = proto_encode(&client_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::ClientState.into(),
         data: client_state_data_bytes,
     };
 
-    timestamped_sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(signer, chain, sign_bytes)
 }
 
-fn get_consensus_proof(
+async fn get_consensus_proof<'e>(
+    acquire: impl Acquire<'e, Database = Db>,
+    signer: impl Signer,
     chain: &Chain,
-    query_handler: &QueryHandler,
-    mnemonic: &Mnemonic,
     client_id: &ClientId,
 ) -> Result<Vec<u8>> {
-    let client_state = query_handler
-        .get_client_state(client_id)?
+    let mut executor = acquire.acquire().await?;
+
+    let client_state = ibc_handler::get_tendermint_client_state(&mut *executor, client_id)
+        .await?
         .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
 
     let height = client_state
         .latest_height
         .ok_or_else(|| anyhow!("client state does not contain latest height"))?;
 
-    let consensus_state = query_handler
-        .get_consensus_state(client_id, &height)?
-        .ok_or_else(|| {
-            anyhow!(
-                "consensus state with id {} and height {} not found",
-                client_id,
-                height.to_string(),
-            )
-        })?
-        .to_any()?;
+    let consensus_state =
+        ibc_handler::get_tendermint_consensus_state(&mut *executor, client_id, &height)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "consensus state with id {} and height {} not found",
+                    client_id,
+                    height.to_string(),
+                )
+            })?
+            .to_any()?;
 
     let mut consensus_state_path = ConsensusStatePath::new(client_id, &height);
     consensus_state_path.apply_prefix(&"ibc".parse().unwrap());
@@ -907,19 +870,19 @@ fn get_consensus_proof(
     let consensus_state_data_bytes = proto_encode(&consensus_state_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::ConsensusState.into(),
         data: consensus_state_data_bytes,
     };
 
-    timestamped_sign(chain, mnemonic, sign_bytes)
+    timestamped_sign(signer, chain, sign_bytes)
 }
 
 fn get_header_proof(
+    signer: impl Signer,
     chain: &Chain,
-    mnemonic: &Mnemonic,
     new_public_key: Option<Any>,
     new_diversifier: String,
 ) -> Result<Vec<u8>> {
@@ -931,40 +894,51 @@ fn get_header_proof(
     let header_data_bytes = proto_encode(&header_data)?;
 
     let sign_bytes = SignBytes {
-        sequence: chain.sequence,
-        timestamp: chain.consensus_timestamp,
-        diversifier: chain.diversifier.to_owned(),
+        sequence: chain.sequence.into(),
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
+        diversifier: chain.config.diversifier.to_owned(),
         data_type: DataType::Header.into(),
         data: header_data_bytes,
     };
 
-    sign(mnemonic, sign_bytes)
+    sign(signer, sign_bytes)
 }
 
-fn timestamped_sign(chain: &Chain, mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec<u8>> {
-    let signature_data = sign(mnemonic, sign_bytes)?;
+fn timestamped_sign(signer: impl Signer, chain: &Chain, sign_bytes: SignBytes) -> Result<Vec<u8>> {
+    let signature_data = sign(signer, sign_bytes)?;
 
     let timestamped_signature_data = TimestampedSignatureData {
         signature_data,
-        timestamp: chain.consensus_timestamp,
+        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
     };
 
     proto_encode(&timestamped_signature_data)
 }
 
-fn sign(mnemonic: &Mnemonic, sign_bytes: SignBytes) -> Result<Vec<u8>> {
+fn sign(signer: impl Signer, sign_bytes: SignBytes) -> Result<Vec<u8>> {
     let sign_bytes = proto_encode(&sign_bytes)?;
-    let signature: Signature = mnemonic.to_signing_key()?.sign(&sign_bytes);
-    let signature_bytes: Vec<u8> = signature.as_ref().to_vec();
+    let signature = signer.sign(&sign_bytes)?;
 
     let signature_data = SignatureData {
         sum: Some(SignatureDataInner::Single(SingleSignatureData {
-            signature: signature_bytes,
+            signature,
             mode: SignMode::Unspecified.into(),
         })),
     };
 
     proto_encode(&signature_data)
+}
+
+fn to_any_public_key(key: Vec<u8>) -> Result<Any> {
+    let public_key = Secp256k1PubKey { key };
+    public_key.to_any()
+}
+
+fn to_u64_timestamp(timestamp: DateTime<Utc>) -> Result<u64> {
+    timestamp
+        .timestamp()
+        .try_into()
+        .context("unable to convert unix timestamp to u64")
 }
 
 #[derive(Debug, Serialize, Deserialize)]

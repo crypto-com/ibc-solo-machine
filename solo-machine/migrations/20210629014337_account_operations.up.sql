@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS account_operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    address TEXT NOT NULL,
+    denom TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    operation_type TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
