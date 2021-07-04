@@ -1,0 +1,23 @@
+#![deny(missing_docs, unsafe_code)]
+//! IBC solo machine
+pub(crate) mod event;
+pub mod model;
+pub mod service;
+pub mod signer;
+pub(crate) mod transaction_builder;
+
+#[doc(inline)]
+pub use self::{
+    event::Event,
+    signer::{Signer, ToPublicKey},
+};
+
+use sqlx::{migrate::Migrator, Sqlite, SqlitePool};
+
+/// Database type
+pub type Db = Sqlite;
+/// Database pool type
+pub type DbPool = SqlitePool;
+
+/// Database migrator
+pub const MIGRATOR: Migrator = sqlx::migrate!();

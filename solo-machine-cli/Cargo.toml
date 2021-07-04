@@ -1,0 +1,23 @@
+[package]
+name = "solo-machine-cli"
+version = "0.1.0"
+authors = ["Devashish Dixit <devashishdxt@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.41"
+cli-table = { version="0.4.6", default-features=false, features=["derive"] }
+dotenv = "0.15.0"
+hex = "0.4.3"
+humantime = "2.1.0"
+ibc = { path="../ibc" }
+num-rational = "0.4.0"
+rust_decimal = "1.14.3"
+solo-machine = { path="../solo-machine" }
+structopt = "0.3.21"
+tendermint = "0.20.0"
+termcolor = "1.1.2"
+tiny-bip39 = "0.8.0"
+tokio = { version="1.8.0", features=["fs", "macros"] }
