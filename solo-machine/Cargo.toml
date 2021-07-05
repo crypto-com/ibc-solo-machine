@@ -8,34 +8,16 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.41"
-bech32 = "0.8.1"
-chrono = "0.4.19"
-cosmos-sdk-proto = "0.5.0"
-hex = { version = "0.4.3", features = ["serde"] }
+cli-table = { version="0.4.6", default-features=false, features=["derive"] }
+dotenv = "0.15.0"
+hex = "0.4.3"
+humantime = "2.1.0"
 ibc = { path="../ibc" }
-k256 = { version = "0.9.4", features = ["ecdsa", "sha256"], optional = true }
-num-rational = { version = "0.4.0", features = ["serde"] }
-prost = "0.7.0"
-prost-types = "0.7.0"
-ripemd160 = "0.9.1"
+num-rational = "0.4.0"
 rust_decimal = "1.14.3"
-serde = { version = "1.0.126", features = ["derive"] }
-serde_json = "1.0.64"
-sha2 = "0.9.5"
-sqlx = { version = "0.5.5", features = [
-    "json",
-    "macros",
-    "runtime-tokio-rustls",
-    "sqlite",
-    "chrono",
-] }
+solo-machine-core = { path="../solo-machine-core" }
+structopt = "0.3.21"
 tendermint = "0.20.0"
-tendermint-light-client = "0.20.0"
-tendermint-rpc = { version = "0.20.0", features = ["http-client"] }
-tiny-bip39 = { version = "0.8.0", optional = true }
-tiny-hderive = { version = "0.3.0", optional = true }
-tokio = { version = "1.8.0", features = ["sync"] }
-
-[features]
-default = ["mnemonic-signer"]
-mnemonic-signer = ["k256", "tiny-bip39", "tiny-hderive"]
+termcolor = "1.1.2"
+tiny-bip39 = "0.8.0"
+tokio = { version="1.8.0", features=["fs", "macros"] }

@@ -10,7 +10,7 @@ use std::{
 use anyhow::{anyhow, ensure, Context, Result};
 use bip39::{Language, Mnemonic};
 use cli_table::{Cell, Row, RowStruct, Style};
-use solo_machine::{signer::MnemonicSigner, DbPool, Signer, MIGRATOR};
+use solo_machine_core::{signer::MnemonicSigner, DbPool, Signer, MIGRATOR};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -117,7 +117,7 @@ impl Command {
                     .await
             }
             SubCommand::GenCompletion { shell } => {
-                Self::clap().gen_completions_to("solo-machine-cli", shell, &mut stdout());
+                Self::clap().gen_completions_to("solo-machine", shell, &mut stdout());
                 Ok(())
             }
             SubCommand::Ibc(ibc) => {
