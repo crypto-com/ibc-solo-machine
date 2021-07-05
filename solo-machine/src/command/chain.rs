@@ -38,14 +38,6 @@ pub enum ChainCommand {
             hide_env_values = true
         )]
         rpc_addr: String,
-        /// Account prefix used by the chain
-        #[structopt(
-            long,
-            default_value = "cosmos",
-            env = "SOLO_ACCOUNT_PREFIX",
-            hide_env_values = true
-        )]
-        account_prefix: String,
         /// Fee amount
         #[structopt(
             long,
@@ -192,7 +184,6 @@ impl ChainCommand {
                 Self::Add {
                     grpc_addr,
                     rpc_addr,
-                    account_prefix,
                     fee_amount,
                     fee_denom,
                     gas_limit,
@@ -208,7 +199,6 @@ impl ChainCommand {
                     let config = ChainConfig {
                         grpc_addr,
                         rpc_addr,
-                        account_prefix,
                         fee: Fee {
                             amount: fee_amount,
                             denom: fee_denom,

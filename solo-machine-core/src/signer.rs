@@ -15,13 +15,20 @@ pub trait ToPublicKey {
     /// Returns public key of signer
     fn to_public_key(&self) -> Result<Vec<u8>>;
 
+    /// Returns account prefix for computing bech32 addresses
+    fn get_account_prefix(&self) -> &str;
+
     /// Returns accounts address for this signer for given prefix
-    fn to_account_address(&self, prefix: &str) -> Result<String> {
+    fn to_account_address(&self) -> Result<String> {
         let public_key = self.to_public_key()?;
         let address_bytes = Ripemd160::digest(&Sha256::digest(&public_key)).to_vec();
 
-        bech32::encode(prefix, address_bytes.to_base32(), Variant::Bech32)
-            .context("unable to encode address into bech32")
+        bech32::encode(
+            self.get_account_prefix(),
+            address_bytes.to_base32(),
+            Variant::Bech32,
+        )
+        .context("unable to encode address into bech32")
     }
 }
 
@@ -30,8 +37,12 @@ impl<T: ToPublicKey> ToPublicKey for &T {
         (*self).to_public_key()
     }
 
-    fn to_account_address(&self, prefix: &str) -> Result<String> {
-        (*self).to_account_address(prefix)
+    fn get_account_prefix(&self) -> &str {
+        (*self).get_account_prefix()
+    }
+
+    fn to_account_address(&self) -> Result<String> {
+        (*self).to_account_address()
     }
 }
 

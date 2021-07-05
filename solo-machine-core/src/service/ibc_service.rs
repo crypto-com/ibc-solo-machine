@@ -23,7 +23,7 @@ use ibc::{
     },
     proto::proto_encode,
 };
-use sqlx::{Acquire, Executor};
+use sqlx::{Executor, Transaction};
 use tendermint::{
     abci::{
         tag::{Key, Tag},
@@ -285,7 +285,7 @@ impl IbcService {
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
-        let address = signer.to_account_address(&chain.config.account_prefix)?;
+        let address = signer.to_account_address()?;
         let receiver = receiver.unwrap_or_else(|| address.clone());
 
         bank_service::remove_tokens(
@@ -374,7 +374,7 @@ impl IbcService {
 
         ensure_response_success(&response)?;
 
-        let address = signer.to_account_address(&chain.config.account_prefix)?;
+        let address = signer.to_account_address()?;
         let receiver = receiver.unwrap_or_else(|| address.clone());
 
         let msg = transaction_builder::msg_token_receive(
@@ -441,13 +441,11 @@ where
     extract_attribute(&response.deliver_tx.events, "create_client", "client_id")?.parse()
 }
 
-async fn create_tendermint_client<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn create_tendermint_client(
+    transaction: &mut Transaction<'_, Db>,
     instance: &mut Instance,
     chain: &Chain,
 ) -> Result<ClientId> {
-    let mut executor = acquire.acquire().await?;
-
     let (client_state, consensus_state) =
         transaction_builder::msg_create_tendermint_client(chain, instance).await?;
 
@@ -457,9 +455,9 @@ async fn create_tendermint_client<'e>(
         .as_ref()
         .ok_or_else(|| anyhow!("latest height cannot be absent in client state"))?;
 
-    ibc_handler::add_tendermint_client_state(&mut *executor, &client_id, &client_state).await?;
+    ibc_handler::add_tendermint_client_state(&mut *transaction, &client_id, &client_state).await?;
     ibc_handler::add_tendermint_consensus_state(
-        &mut *executor,
+        &mut *transaction,
         &client_id,
         latest_height,
         &consensus_state,
@@ -534,8 +532,8 @@ async fn connection_open_try<'e>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn connection_open_ack<'e, C>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn connection_open_ack<C>(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     rpc_client: &C,
     chain: &mut Chain,
@@ -548,7 +546,7 @@ where
     C: Client + Send + Sync,
 {
     let msg = transaction_builder::msg_connection_open_ack(
-        acquire,
+        transaction,
         signer,
         chain,
         solo_machine_connection_id,
@@ -567,18 +565,16 @@ where
     Ok(())
 }
 
-async fn connection_open_confirm<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn connection_open_confirm(
+    transaction: &mut Transaction<'_, Db>,
     connection_id: &ConnectionId,
 ) -> Result<()> {
-    let mut executor = acquire.acquire().await?;
-
-    let mut connection = ibc_handler::get_connection(&mut *executor, connection_id)
+    let mut connection = ibc_handler::get_connection(&mut *transaction, connection_id)
         .await?
         .ok_or_else(|| anyhow!("connection for connection id ({}) not found", connection_id))?;
     connection.set_state(ConnectionState::Open);
 
-    ibc_handler::update_connection(&mut *executor, connection_id, &connection).await
+    ibc_handler::update_connection(&mut *transaction, connection_id, &connection).await
 }
 
 async fn channel_open_init<C>(
@@ -633,8 +629,8 @@ async fn channel_open_try<'e>(
     Ok(channel_id)
 }
 
-async fn channel_open_ack<'e, C>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn channel_open_ack<C>(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     rpc_client: &C,
     chain: &mut Chain,
@@ -646,7 +642,7 @@ where
     C: Client + Send + Sync,
 {
     let msg = transaction_builder::msg_channel_open_ack(
-        acquire,
+        transaction,
         signer,
         chain,
         solo_machine_channel_id,
@@ -664,14 +660,12 @@ where
     Ok(())
 }
 
-async fn channel_open_confirm<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn channel_open_confirm(
+    transaction: &mut Transaction<'_, Db>,
     port_id: &PortId,
     channel_id: &ChannelId,
 ) -> Result<()> {
-    let mut executor = acquire.acquire().await?;
-
-    let mut channel = ibc_handler::get_channel(&mut *executor, port_id, channel_id)
+    let mut channel = ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
         .await?
         .ok_or_else(|| {
             anyhow!(
@@ -682,11 +676,11 @@ async fn channel_open_confirm<'e>(
         })?;
     channel.set_state(ChannelState::Open);
 
-    ibc_handler::update_channel(&mut *executor, port_id, channel_id, &channel).await
+    ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await
 }
 
-async fn process_packets<'e, C>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn process_packets<C>(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     rpc_client: &C,
     chain: &mut Chain,
@@ -702,8 +696,6 @@ where
             chain.id
         )
     })?;
-
-    let mut executor = acquire.acquire().await?;
 
     for packet in packets {
         ensure!(
@@ -726,7 +718,7 @@ where
         let packet_data = parse_packet_data(&packet.data)?;
 
         let msg = transaction_builder::msg_token_receive_ack(
-            &mut *executor,
+            &mut *transaction,
             &signer,
             &mut *chain,
             packet,
@@ -741,7 +733,7 @@ where
         ensure_response_success(&response)?;
 
         bank_service::add_tokens(
-            &mut *executor,
+            &mut *transaction,
             &packet_data.receiver,
             packet_data
                 .amount

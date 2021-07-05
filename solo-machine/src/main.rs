@@ -3,6 +3,7 @@ use command::Command;
 use structopt::StructOpt;
 
 mod command;
+mod server;
 
 #[tokio::main]
 async fn main() -> Result<()> {
