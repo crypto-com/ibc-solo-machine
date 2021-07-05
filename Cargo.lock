@@ -2138,6 +2138,26 @@ name = "solo-machine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cli-table",
+ "dotenv",
+ "hex",
+ "humantime",
+ "ibc",
+ "num-rational",
+ "rust_decimal",
+ "solo-machine-core",
+ "structopt",
+ "tendermint",
+ "termcolor",
+ "tiny-bip39",
+ "tokio",
+]
+
+[[package]]
+name = "solo-machine-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "bech32",
  "chrono",
  "cosmos-sdk-proto",
@@ -2158,26 +2178,6 @@ dependencies = [
  "tendermint-rpc",
  "tiny-bip39",
  "tiny-hderive",
- "tokio",
-]
-
-[[package]]
-name = "solo-machine-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cli-table",
- "dotenv",
- "hex",
- "humantime",
- "ibc",
- "num-rational",
- "rust_decimal",
- "solo-machine",
- "structopt",
- "tendermint",
- "termcolor",
- "tiny-bip39",
  "tokio",
 ]
 

@@ -6,7 +6,7 @@ use humantime::format_duration;
 use ibc::core::ics24_host::identifier::{ChainId, Identifier, PortId};
 use num_rational::Ratio;
 use rust_decimal::Decimal;
-use solo_machine::{
+use solo_machine_core::{
     model::{ChainConfig, Fee},
     service::ChainService,
     DbPool, Event, ToPublicKey,

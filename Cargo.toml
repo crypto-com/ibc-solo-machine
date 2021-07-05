@@ -1,2 +1,2 @@
 [workspace]
-members = ["ibc", "solo-machine", "solo-machine-cli"]
+members = ["ibc", "solo-machine", "solo-machine-core"]
