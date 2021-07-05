@@ -1108,29 +1108,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ibc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bech32",
- "cosmos-sdk-proto",
- "ed25519-dalek",
- "hex",
- "k256",
- "prost",
- "prost-types",
- "rand 0.8.4",
- "regex",
- "ripemd160",
- "serde",
- "sha2 0.9.5",
- "tendermint",
- "tonic",
- "tonic-build",
- "urlencoding",
-]
-
-[[package]]
 name = "idna"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2142,7 +2119,6 @@ dependencies = [
  "dotenv",
  "hex",
  "humantime",
- "ibc",
  "num-rational",
  "prost",
  "prost-build",
@@ -2166,12 +2142,14 @@ dependencies = [
  "bech32",
  "chrono",
  "cosmos-sdk-proto",
+ "ed25519-dalek",
  "hex",
- "ibc",
  "k256",
  "num-rational",
  "prost",
  "prost-types",
+ "rand 0.8.4",
+ "regex",
  "ripemd160",
  "rust_decimal",
  "serde",
@@ -2184,6 +2162,9 @@ dependencies = [
  "tiny-bip39",
  "tiny-hderive",
  "tokio",
+ "tonic",
+ "tonic-build",
+ "urlencoding",
 ]
 
 [[package]]

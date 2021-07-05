@@ -2,8 +2,8 @@ use std::io::Write;
 
 use anyhow::{bail, Context, Result};
 use cli_table::{format::Justify, print_stdout, Cell, Color, Row, RowStruct, Style, Table};
-use ibc::core::ics24_host::identifier::Identifier;
 use solo_machine_core::{
+    ibc::core::ics24_host::identifier::Identifier,
     model::{AccountOperation, OperationType},
     service::BankService,
     DbPool, Event, Signer,

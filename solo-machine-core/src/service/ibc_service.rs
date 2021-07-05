@@ -16,13 +16,6 @@ use cosmos_sdk_proto::ibc::{
         },
     },
 };
-use ibc::{
-    core::{
-        ics02_client::{client_type::ClientType, height::IHeight},
-        ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier, PortId},
-    },
-    proto::proto_encode,
-};
 use sqlx::{Executor, Transaction};
 use tendermint::{
     abci::{
@@ -43,11 +36,16 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     event::{notify_event, Event},
+    ibc::core::{
+        ics02_client::{client_type::ClientType, height::IHeight},
+        ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier, PortId},
+    },
     model::{
         bank::account_operation::OperationType,
         chain::{self, Chain, ConnectionDetails as ChainConnectionDetails},
         ibc as ibc_handler,
     },
+    proto::proto_encode,
     service::bank_service,
     transaction_builder, Db, DbPool, Signer,
 };
@@ -866,14 +864,14 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
 fn ensure_response_success(response: &TxCommitResponse) -> Result<()> {
     ensure!(
         response.check_tx.code.is_ok(),
-        "check_tx response contains error code: {:?}",
-        response
+        "check_tx response contains error code: {}",
+        response.check_tx.log
     );
 
     ensure!(
         response.deliver_tx.code.is_ok(),
-        "deliver_tx response contains error code: {:?}",
-        response
+        "deliver_tx response contains error code: {}",
+        response.deliver_tx.log
     );
 
     Ok(())

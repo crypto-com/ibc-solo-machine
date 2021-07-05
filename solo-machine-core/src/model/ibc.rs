@@ -5,17 +5,17 @@ use cosmos_sdk_proto::ibc::{
         ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
     },
 };
-use ibc::{
-    core::ics24_host::{
+use prost::Message;
+use sqlx::{Executor, FromRow};
+
+use crate::{
+    ibc::core::ics24_host::{
         identifier::{ChannelId, ClientId, ConnectionId, PortId},
         path::{ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath},
     },
     proto::proto_encode,
+    Db,
 };
-use prost::Message;
-use sqlx::{Executor, FromRow};
-
-use crate::Db;
 
 #[derive(Debug, FromRow)]
 struct IbcData {

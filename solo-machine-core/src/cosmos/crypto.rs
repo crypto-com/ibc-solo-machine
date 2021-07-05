@@ -1,3 +1,5 @@
+//! Cosmos public key implementation
+#![allow(missing_docs)]
 mod ed25519;
 mod multisig;
 mod secp256k1;

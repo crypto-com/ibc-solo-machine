@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use ibc::core::ics24_host::identifier::{ChainId, Identifier};
 use rust_decimal::Decimal;
 use tendermint::node::Id as NodeId;
 use tendermint_rpc::{Client, HttpClient};
@@ -7,6 +6,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     event::notify_event,
+    ibc::core::ics24_host::identifier::{ChainId, Identifier},
     model::{chain, Chain, ChainConfig},
     DbPool, Event, ToPublicKey,
 };

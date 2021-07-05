@@ -8,10 +8,6 @@ use chrono::{DateTime, Utc};
 use cosmos_sdk_proto::cosmos::bank::v1beta1::{
     query_client::QueryClient as BankQueryClient, QueryBalanceRequest,
 };
-use ibc::core::ics24_host::{
-    identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier, PortId},
-    path::DenomTrace,
-};
 use num_rational::Ratio;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -19,7 +15,13 @@ use sha2::{Digest, Sha256};
 use sqlx::{types::Json, Executor, FromRow};
 use tendermint::{block::Height as BlockHeight, node::Id as NodeId};
 
-use crate::{Db, ToPublicKey};
+use crate::{
+    ibc::core::ics24_host::{
+        identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier, PortId},
+        path::DenomTrace,
+    },
+    Db, ToPublicKey,
+};
 
 /// State of an IBC enabled chain
 #[derive(Debug)]

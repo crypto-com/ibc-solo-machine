@@ -1,3 +1,5 @@
+//! Cosmos bit array implementation
+#![allow(missing_docs)]
 use std::convert::TryFrom;
 
 use cosmos_sdk_proto::cosmos::crypto::multisig::v1beta1::CompactBitArray;
