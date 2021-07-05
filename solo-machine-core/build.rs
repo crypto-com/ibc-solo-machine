@@ -14,6 +14,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     tonic_build::configure()
+        .extern_path(
+            ".cosmos.auth.v1beta1",
+            "::cosmos_sdk_proto::cosmos::auth::v1beta1",
+        )
+        .extern_path(
+            ".ibc.core.connection.v1",
+            "::cosmos_sdk_proto::ibc::core::connection::v1",
+        )
+        .extern_path(
+            ".ibc.core.channel.v1",
+            "::cosmos_sdk_proto::ibc::core::channel::v1",
+        )
         .build_server(false)
         .compile(&files, &["proto".into()])?;
 

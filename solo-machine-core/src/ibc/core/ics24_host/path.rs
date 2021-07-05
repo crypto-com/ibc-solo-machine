@@ -8,7 +8,7 @@ use std::{
 use anyhow::{ensure, Error};
 use cosmos_sdk_proto::ibc::core::{client::v1::Height, commitment::v1::MerklePath};
 
-use crate::core::ics02_client::height::IHeight;
+use crate::ibc::core::ics02_client::height::IHeight;
 
 use super::identifier::{ChannelId, ClientId, ConnectionId, Identifier, PortId};
 

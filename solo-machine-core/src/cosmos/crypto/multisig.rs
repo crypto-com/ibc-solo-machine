@@ -4,7 +4,7 @@ use anyhow::{anyhow, ensure, Error, Result};
 use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Multi as MultiSignatureData;
 
 use crate::{
-    core::bit_array::BitArray,
+    cosmos::bit_array::BitArray,
     proto::{cosmos::crypto::multisig::LegacyAminoPubKey, AnyConvert},
 };
 

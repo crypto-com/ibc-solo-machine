@@ -1,6 +1,11 @@
 #![deny(missing_docs, unsafe_code)]
 //! IBC solo machine
+#[macro_use]
+pub mod proto;
+
+pub mod cosmos;
 pub(crate) mod event;
+pub mod ibc;
 pub mod model;
 pub mod service;
 pub mod signer;

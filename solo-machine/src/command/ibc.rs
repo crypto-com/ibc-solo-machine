@@ -2,8 +2,11 @@ use std::io::Write;
 
 use anyhow::{bail, Context, Result};
 use cli_table::{print_stdout, Table};
-use ibc::core::ics24_host::identifier::{ChainId, Identifier};
-use solo_machine_core::{service::IbcService, DbPool, Event, Signer};
+use solo_machine_core::{
+    ibc::core::ics24_host::identifier::{ChainId, Identifier},
+    service::IbcService,
+    DbPool, Event, Signer,
+};
 use structopt::StructOpt;
 use termcolor::{ColorChoice, ColorSpec, StandardStream};
 use tokio::sync::mpsc::unbounded_channel;

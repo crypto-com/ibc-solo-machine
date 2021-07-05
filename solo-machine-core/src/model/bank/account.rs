@@ -2,10 +2,9 @@ use std::convert::TryFrom;
 
 use anyhow::{ensure, Context, Error, Result};
 use chrono::{DateTime, Utc};
-use ibc::core::ics24_host::identifier::Identifier;
 use sqlx::{Executor, FromRow};
 
-use crate::Db;
+use crate::{ibc::core::ics24_host::identifier::Identifier, Db};
 
 #[derive(Debug)]
 /// Denotes an account in solo machine

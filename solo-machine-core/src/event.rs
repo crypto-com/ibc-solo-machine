@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Result};
-use ibc::core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::model::ConnectionDetails;
+use crate::{
+    ibc::core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
+    model::ConnectionDetails,
+};
 
 /// Events emitted by IBC service
 pub enum Event {

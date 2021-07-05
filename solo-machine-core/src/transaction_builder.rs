@@ -1,12 +1,24 @@
 use std::convert::TryInto;
 
+#[cfg(feature = "solomachine-v2")]
+use crate::proto::ibc::lightclients::solomachine::v2::{
+    ChannelStateData, ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
+    ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
+    Header as SoloMachineHeader, HeaderData, PacketAcknowledgementData, PacketCommitmentData,
+    SignBytes, TimestampedSignatureData,
+};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use chrono::{DateTime, Utc};
+#[cfg(not(feature = "solomachine-v2"))]
+use cosmos_sdk_proto::ibc::lightclients::solomachine::v1::{
+    ChannelStateData, ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
+    ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
+    Header as SoloMachineHeader, HeaderData, PacketAcknowledgementData, PacketCommitmentData,
+    SignBytes, TimestampedSignatureData,
+};
 use cosmos_sdk_proto::{
     cosmos::{
-        auth::v1beta1::{
-            query_client::QueryClient as AuthQueryClient, BaseAccount, QueryAccountRequest,
-        },
+        auth::v1beta1::{query_client::QueryClient as AuthQueryClient, QueryAccountRequest},
         base::v1beta1::Coin,
         staking::v1beta1::{query_client::QueryClient as StakingQueryClient, QueryParamsRequest},
         tx::{
@@ -38,38 +50,12 @@ use cosmos_sdk_proto::{
                 MsgConnectionOpenInit, Version as ConnectionVersion,
             },
         },
-        lightclients::{
-            solomachine::v1::{
-                ChannelStateData, ClientState as SoloMachineClientState, ClientStateData,
-                ConnectionStateData, ConsensusState as SoloMachineConsensusState,
-                ConsensusStateData, DataType, Header as SoloMachineHeader, HeaderData,
-                PacketAcknowledgementData, PacketCommitmentData, SignBytes,
-                TimestampedSignatureData,
-            },
-            tendermint::v1::{
-                ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
-                Fraction,
-            },
+        lightclients::tendermint::v1::{
+            ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
+            Fraction,
         },
     },
 };
-use ibc::{
-    client::ics07_tendermint::consensus_state::IConsensusState,
-    core::{
-        ics02_client::height::IHeight,
-        ics04_channel::packet::IPacket,
-        ics23_vector_commitments::proof_specs,
-        ics24_host::{
-            identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
-            path::{
-                ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath,
-                PacketAcknowledgementPath, PacketCommitmentPath,
-            },
-        },
-    },
-    proto::{cosmos::crypto::secp256k1::PubKey as Secp256k1PubKey, proto_encode, AnyConvert},
-};
-use prost::Message;
 use prost_types::{Any, Duration};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -79,7 +65,24 @@ use tendermint_light_client::supervisor::Instance;
 use tendermint_rpc::Client;
 
 use crate::{
+    cosmos::account::Account,
+    ibc::{
+        client::ics07_tendermint::consensus_state::IConsensusState,
+        core::{
+            ics02_client::height::IHeight,
+            ics04_channel::packet::IPacket,
+            ics23_vector_commitments::proof_specs,
+            ics24_host::{
+                identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
+                path::{
+                    ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath,
+                    PacketAcknowledgementPath, PacketCommitmentPath,
+                },
+            },
+        },
+    },
     model::{chain, ibc as ibc_handler, Chain},
+    proto::{cosmos::crypto::secp256k1::PubKey as Secp256k1PubKey, proto_encode, AnyConvert},
     Db, Signer, ToPublicKey,
 };
 
@@ -102,7 +105,10 @@ pub async fn msg_create_solo_machine_client(
 
     let client_state = SoloMachineClientState {
         sequence: chain.sequence.into(),
+        #[cfg(not(feature = "solomachine-v2"))]
         frozen_sequence: 0,
+        #[cfg(feature = "solomachine-v2")]
+        is_frozen: false,
         consensus_state: Some(consensus_state),
         allow_update_after_proposal: true,
     };
@@ -575,9 +581,12 @@ async fn get_account_details(signer: impl ToPublicKey, chain: &Chain) -> Result<
         .account
         .ok_or_else(|| anyhow!("unable to find account with address: {}", account_address))?;
 
-    let account = BaseAccount::decode(response.value.as_slice())?;
+    let account = Account::from_any(&response)?;
+    let base_account = account
+        .get_base_account()
+        .ok_or_else(|| anyhow!("missing base account for address: {}", account_address))?;
 
-    Ok((account.account_number, account.sequence))
+    Ok((base_account.account_number, base_account.sequence))
 }
 
 async fn get_unbonding_period(chain: &Chain) -> Result<Duration> {

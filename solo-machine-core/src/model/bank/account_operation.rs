@@ -5,11 +5,13 @@ use std::{
 
 use anyhow::{ensure, Context, Error, Result};
 use chrono::{DateTime, Utc};
-use ibc::core::ics24_host::identifier::{ChainId, Identifier};
 use serde::{Deserialize, Serialize};
 use sqlx::{types::Json, Executor, FromRow};
 
-use crate::Db;
+use crate::{
+    ibc::core::ics24_host::identifier::{ChainId, Identifier},
+    Db,
+};
 
 /// Denotes an operation on an account
 #[derive(Debug)]

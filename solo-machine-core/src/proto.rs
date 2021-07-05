@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 pub mod cosmos {
     pub mod crypto {
         pub mod ed25519 {
@@ -18,6 +19,26 @@ pub mod cosmos {
 
         pub mod secp256r1 {
             tonic::include_proto!("cosmos.crypto.secp256r1");
+        }
+    }
+}
+
+#[cfg(feature = "ethermint")]
+pub mod ethermint {
+    pub mod types {
+        pub mod v1alpha1 {
+            tonic::include_proto!("ethermint.types.v1alpha1");
+        }
+    }
+}
+
+#[cfg(feature = "solomachine-v2")]
+pub mod ibc {
+    pub mod lightclients {
+        pub mod solomachine {
+            pub mod v2 {
+                tonic::include_proto!("ibc.lightclients.solomachine.v2");
+            }
         }
     }
 }

@@ -7,7 +7,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::core::ics02_client::client_type::ClientType;
+use crate::ibc::core::ics02_client::client_type::ClientType;
 
 pub(crate) const MAX_IDENTIFIER_LEN: usize = 64;
 const VALID_CHAIN_ID_PATTERN: &str = r"^.+[^-]-{1}[1-9][0-9]*$";
