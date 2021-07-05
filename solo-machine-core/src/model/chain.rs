@@ -33,9 +33,9 @@ pub struct Chain {
     /// Consensus timestamp of solo machine (used when creating transactions on chain)
     pub consensus_timestamp: DateTime<Utc>,
     /// Sequence of solo machine (used when creating transactions on chain)
-    pub sequence: u16,
+    pub sequence: u32,
     /// Packet sequence of solo machine (used when creating transactions on chain)
-    pub packet_sequence: u16,
+    pub packet_sequence: u32,
     /// IBC connection details
     pub connection_details: Option<ConnectionDetails>,
     /// Creation time of chain
@@ -79,7 +79,7 @@ impl Chain {
             .ok_or_else(|| anyhow!("connection details not found when fetching balance"))?;
 
         let request = QueryBalanceRequest {
-            address: signer.to_account_address(&self.config.account_prefix)?,
+            address: signer.to_account_address()?,
             denom,
         };
 
@@ -106,9 +106,9 @@ struct RawChain {
     /// Consensus timestamp of solo machine (used when creating transactions on chain)
     pub consensus_timestamp: DateTime<Utc>,
     /// Sequence of solo machine (used when creating transactions on chain)
-    pub sequence: i32,
+    pub sequence: u32,
     /// Packet sequence of solo machine (used when creating transactions on chain)
-    pub packet_sequence: i32,
+    pub packet_sequence: u32,
     /// IBC connection details
     pub connection_details: Option<Json<ConnectionDetails>>,
     /// Creation time of chain
@@ -124,8 +124,6 @@ pub struct ChainConfig {
     pub grpc_addr: String,
     /// RPC address
     pub rpc_addr: String,
-    /// Account prefix used by the chain
-    pub account_prefix: String,
     /// Fee and gas limits
     pub fee: Fee,
     /// Trust level (e.g. 1/3)
@@ -182,8 +180,8 @@ impl From<Chain> for RawChain {
             node_id: chain.node_id.to_string(),
             config: Json(chain.config),
             consensus_timestamp: chain.consensus_timestamp,
-            sequence: chain.sequence.into(),
-            packet_sequence: chain.packet_sequence.into(),
+            sequence: chain.sequence,
+            packet_sequence: chain.packet_sequence,
             connection_details: chain.connection_details.map(Json),
             created_at: chain.created_at,
             updated_at: chain.updated_at,
@@ -203,14 +201,8 @@ impl TryFrom<RawChain> for Chain {
                 .map_err(|err| anyhow!("unable to parse node id: {}", err))?,
             config: raw.config.0,
             consensus_timestamp: raw.consensus_timestamp,
-            sequence: raw
-                .sequence
-                .try_into()
-                .context("cannot convert i32 to u16")?,
-            packet_sequence: raw
-                .packet_sequence
-                .try_into()
-                .context("cannot convert i32 to u16")?,
+            sequence: raw.sequence,
+            packet_sequence: raw.packet_sequence,
             connection_details: raw.connection_details.map(|json| json.0),
             created_at: raw.created_at,
             updated_at: raw.updated_at,

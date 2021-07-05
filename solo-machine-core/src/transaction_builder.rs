@@ -73,7 +73,7 @@ use prost::Message;
 use prost_types::{Any, Duration};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{Acquire, Executor};
+use sqlx::{Executor, Transaction};
 use tendermint::block::Header;
 use tendermint_light_client::supervisor::Instance;
 use tendermint_rpc::Client;
@@ -111,7 +111,7 @@ pub async fn msg_create_solo_machine_client(
     let message = MsgCreateClient {
         client_state: Some(any_client_state),
         consensus_state: Some(any_consensus_state),
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, chain, &[message], memo).await
@@ -164,7 +164,7 @@ pub async fn msg_update_solo_machine_client<'e>(
     let message = MsgUpdateClient {
         client_id: connection_details.solo_machine_client_id.to_string(),
         header: Some(any_header),
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, &chain, &[message], memo).await
@@ -224,14 +224,14 @@ pub async fn msg_connection_open_init(
             features: vec!["ORDER_ORDERED".to_string(), "ORDER_UNORDERED".to_string()],
         }),
         delay_period: 0,
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, &chain, &[message], memo).await
 }
 
-pub async fn msg_connection_open_ack<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+pub async fn msg_connection_open_ack(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     chain: &mut Chain,
     solo_machine_connection_id: &ConnectionId,
@@ -239,26 +239,24 @@ pub async fn msg_connection_open_ack<'e>(
     tendermint_connection_id: &ConnectionId,
     memo: String,
 ) -> Result<TxRaw> {
-    let mut executor = acquire.acquire().await?;
-
     let tendermint_client_state =
-        ibc_handler::get_tendermint_client_state(&mut *executor, tendermint_client_id)
+        ibc_handler::get_tendermint_client_state(&mut *transaction, tendermint_client_id)
             .await?
             .ok_or_else(|| anyhow!("client for client id {} not found", tendermint_client_id))?;
 
     let proof_height = Height::new(0, chain.sequence.into());
 
     let proof_try =
-        get_connection_proof(&mut *executor, &signer, &chain, tendermint_connection_id).await?;
-    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
+        get_connection_proof(&mut *transaction, &signer, &chain, tendermint_connection_id).await?;
+    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let proof_client =
-        get_client_proof(&mut *executor, &signer, &chain, &tendermint_client_id).await?;
-    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
+        get_client_proof(&mut *transaction, &signer, &chain, &tendermint_client_id).await?;
+    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let proof_consensus =
-        get_consensus_proof(&mut *executor, &signer, &chain, &tendermint_client_id).await?;
-    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
+        get_consensus_proof(&mut *transaction, &signer, &chain, &tendermint_client_id).await?;
+    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgConnectionOpenAck {
         connection_id: solo_machine_connection_id.to_string(),
@@ -273,7 +271,7 @@ pub async fn msg_connection_open_ack<'e>(
         proof_client,
         proof_consensus,
         consensus_height: tendermint_client_state.latest_height,
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, &chain, &[message], memo).await
@@ -297,27 +295,25 @@ pub async fn msg_channel_open_init(
             connection_hops: vec![solo_machine_connection_id.to_string()],
             version: "ics20-1".to_string(),
         }),
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, &chain, &[message], memo).await
 }
 
-pub async fn msg_channel_open_ack<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+pub async fn msg_channel_open_ack(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     chain: &mut Chain,
     solo_machine_channel_id: &ChannelId,
     tendermint_channel_id: &ChannelId,
     memo: String,
 ) -> Result<TxRaw> {
-    let mut executor = acquire.acquire().await?;
-
     let proof_height = Height::new(0, chain.sequence.into());
 
     let proof_try =
-        get_channel_proof(&mut *executor, &signer, &chain, tendermint_channel_id).await?;
-    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
+        get_channel_proof(&mut *transaction, &signer, &chain, tendermint_channel_id).await?;
+    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgChannelOpenAck {
         port_id: chain.config.port_id.to_string(),
@@ -326,15 +322,15 @@ pub async fn msg_channel_open_ack<'e>(
         counterparty_version: "ics20-1".to_string(),
         proof_height: Some(proof_height),
         proof_try,
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, &chain, &[message], memo).await
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn msg_token_send<'e, C>(
-    acquire: impl Acquire<'e, Database = Db>,
+pub async fn msg_token_send<C>(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     rpc_client: &C,
     chain: &mut Chain,
@@ -346,8 +342,6 @@ pub async fn msg_token_send<'e, C>(
 where
     C: Client + Send + Sync,
 {
-    let mut executor = acquire.acquire().await?;
-
     let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
         anyhow!(
             "connection details not found for chain with id {}",
@@ -355,7 +349,7 @@ where
         )
     })?;
 
-    let sender = signer.to_account_address(&chain.config.account_prefix)?;
+    let sender = signer.to_account_address()?;
 
     let packet_data = TokenTransferPacketData {
         denom: denom.to_string(),
@@ -384,8 +378,8 @@ where
 
     let proof_height = Height::new(0, chain.sequence.into());
 
-    *chain = chain::increment_sequence(&mut *executor, &chain.id).await?;
-    *chain = chain::increment_packet_sequence(&mut *executor, &chain.id).await?;
+    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
+    *chain = chain::increment_packet_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgRecvPacket {
         packet: Some(packet),
@@ -419,7 +413,7 @@ pub async fn msg_token_receive(
         )
     })?;
 
-    let sender = signer.to_account_address(&chain.config.account_prefix)?;
+    let sender = signer.to_account_address()?;
 
     let message = MsgTransfer {
         source_port: chain.config.port_id.to_string(),
@@ -461,7 +455,7 @@ pub async fn msg_token_receive_ack<'e>(
         acknowledgement,
         proof_acked,
         proof_height: Some(proof_height),
-        signer: signer.to_account_address(&chain.config.account_prefix)?,
+        signer: signer.to_account_address()?,
     };
 
     build(signer, &chain, &[message], memo).await
@@ -570,7 +564,7 @@ async fn get_account_details(signer: impl ToPublicKey, chain: &Chain) -> Result<
             chain.config.grpc_addr
         ))?;
 
-    let account_address = signer.to_account_address(&chain.config.account_prefix)?;
+    let account_address = signer.to_account_address()?;
 
     let response = query_client
         .account(QueryAccountRequest {
@@ -831,15 +825,13 @@ async fn get_client_proof<'e>(
     timestamped_sign(signer, chain, sign_bytes)
 }
 
-async fn get_consensus_proof<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+async fn get_consensus_proof(
+    transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
     chain: &Chain,
     client_id: &ClientId,
 ) -> Result<Vec<u8>> {
-    let mut executor = acquire.acquire().await?;
-
-    let client_state = ibc_handler::get_tendermint_client_state(&mut *executor, client_id)
+    let client_state = ibc_handler::get_tendermint_client_state(&mut *transaction, client_id)
         .await?
         .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
 
@@ -848,7 +840,7 @@ async fn get_consensus_proof<'e>(
         .ok_or_else(|| anyhow!("client state does not contain latest height"))?;
 
     let consensus_state =
-        ibc_handler::get_tendermint_consensus_state(&mut *executor, client_id, &height)
+        ibc_handler::get_tendermint_consensus_state(&mut *transaction, client_id, &height)
             .await?
             .ok_or_else(|| {
                 anyhow!(

@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package chain;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+service Chain {
+    // Adds a IBC enabled chain to storage
+    rpc Add (AddChainRequest) returns (AddChainResponse);
+
+    // Fetches IBC enabled chain details
+    rpc Query (QueryChainRequest) returns (QueryChainResponse);
+
+    // Returns the denom hash for a denom on IBC enabled chain after transferring token
+    rpc GetIbcDenom (GetIbcDenomRequest) returns (GetIbcDenomResponse);
+
+    // Fetches balance of given denom on IBC enabled chain
+    rpc QueryBalance (QueryBalanceRequest) returns (QueryBalanceResponse);
+}
+
+message AddChainRequest {
+    // Metadata for IBC enabled chain
+    ChainConfig config = 1;
+}
+
+message AddChainResponse {
+    // Chain ID of added chain
+    string chain_id = 1;
+}
+
+message QueryChainRequest {
+    // Chain ID
+    string chain_id = 1;
+}
+
+message QueryChainResponse {
+    // Chain ID
+    string chain_id = 1;
+    // Node ID of peer
+    string node_id = 2;
+    // Metadata for IBC enabled chain
+    ChainConfig config = 3;
+    // Consensus timestamp of solo machine (used when creating transactions on chain)
+    google.protobuf.Timestamp consensus_timestamp = 4;
+    // Current sequence of solo machine
+    uint32 sequence = 5;
+    // Current packet sequence of solo machine
+    uint32 packet_sequence = 6;
+    // Connection details of this chain
+    ConnectionDetails connection_details = 7;
+    // Time at which the chain was created
+    google.protobuf.Timestamp created_at = 8;
+    // Time at which the chain was last updated
+    google.protobuf.Timestamp updated_at = 9;
+}
+
+message GetIbcDenomRequest {
+    // Chain ID
+    string chain_id = 1;
+    // Denom of tokens on solo machine
+    string denom = 2;
+}
+
+message GetIbcDenomResponse {
+    // Hash of denom on IBC enabled chain
+    string ibc_denom = 1;
+}
+
+message QueryBalanceRequest {
+    // Chain ID
+    string chain_id = 1;
+    // Denom of tokens
+    string denom = 2;
+}
+
+message QueryBalanceResponse {
+    // Balance of given denom on-chain
+    string balance = 1;
+}
+
+message ChainConfig {
+    // gRPC address of IBC enabled chain
+    optional string grpc_addr = 1;
+    // RPC address of IBC enabled chain
+    optional string rpc_addr = 2;
+    // Fee configuration of chain
+    FeeConfig fee_config = 3;
+    // Trust level of IBC enabled chain
+    optional string trust_level = 4;
+    // Duration of the period since the LastestTimestamp during which the submitted headers are valid for upgrade
+    google.protobuf.Duration trusting_period = 5;
+    // Defines how much new (untrusted) header's time can drift into the future.
+    google.protobuf.Duration max_clock_drift = 6;
+    // Light client RPC timeout
+    google.protobuf.Duration rpc_timeout = 7;
+    // Diversifier for solo machine
+    optional string diversifier = 8;
+    // Port ID of IBC channel
+    optional string port_id = 9;
+    // Trusted height of chain for light client
+    optional uint32 trusted_height = 10;
+    // Trusted hash of chain for light client
+    optional string trusted_hash = 11;
+}
+
+message FeeConfig {
+    // Fee amount to be used in each cosmos sdk transaction
+    optional string fee_amount = 1;
+    // Fee denom to be used in each cosmos sdk transaction
+    optional string fee_denom = 2;
+    // Gas limit to be used in each cosmos sdk transaction
+    optional uint64 gas_limit = 3;
+}
+
+message ConnectionDetails {
+    // Client ID of solo machine on IBC enabled chain
+    string solo_machine_client_id = 1;
+    // Client ID of IBC enabled chain on solo machine
+    string tendermint_client_id = 2;
+    // Connection ID of solo machine on IBC enabled chain
+    string solo_machine_connection_id = 3;
+    // Connection ID of IBC enabled chain on solo machine
+    string tendermint_connection_id = 4;
+    // Channel ID of solo machine on IBC enabled chain
+    string solo_machine_channel_id = 5;
+    // Channel ID of IBC enabled chain on solo machine
+    string tendermint_channel_id = 6;
+}

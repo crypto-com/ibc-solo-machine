@@ -5,13 +5,15 @@ use tiny_hderive::bip32::ExtendedPrivKey;
 
 use crate::{Signer, ToPublicKey};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Signer implementation using mnemonic
 pub struct MnemonicSigner {
     /// Mnemonic of signer
     pub mnemonic: Mnemonic,
     /// HD path of signer
     pub hd_path: String,
+    /// Bech32 prefix
+    pub account_prefix: String,
 }
 
 impl MnemonicSigner {
@@ -29,6 +31,10 @@ impl ToPublicKey for MnemonicSigner {
         let signing_key = self.get_signing_key()?;
         let verifying_key = signing_key.verifying_key();
         Ok(verifying_key.to_bytes().to_vec())
+    }
+
+    fn get_account_prefix(&self) -> &str {
+        &self.account_prefix
     }
 }
 

@@ -1,6 +1,6 @@
 use anyhow::{ensure, Context, Result};
 use ibc::core::ics24_host::identifier::Identifier;
-use sqlx::{Acquire, Transaction};
+use sqlx::Transaction;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
@@ -36,14 +36,8 @@ impl BankService {
     }
 
     /// Mint some tokens on solo machine
-    pub async fn mint(
-        &self,
-        signer: impl Signer,
-        account_prefix: &str,
-        amount: u32,
-        denom: Identifier,
-    ) -> Result<()> {
-        let address = signer.to_account_address(account_prefix)?;
+    pub async fn mint(&self, signer: impl Signer, amount: u32, denom: Identifier) -> Result<()> {
+        let address = signer.to_account_address()?;
 
         let mut transaction = self
             .db_pool
@@ -76,14 +70,8 @@ impl BankService {
     }
 
     /// Burn some tokens on solo machine
-    pub async fn burn(
-        &self,
-        signer: impl Signer,
-        account_prefix: &str,
-        amount: u32,
-        denom: Identifier,
-    ) -> Result<()> {
-        let address = signer.to_account_address(account_prefix)?;
+    pub async fn burn(&self, signer: impl Signer, amount: u32, denom: Identifier) -> Result<()> {
+        let address = signer.to_account_address()?;
 
         let mut transaction = self
             .db_pool
@@ -119,21 +107,15 @@ impl BankService {
     pub async fn account(
         &self,
         signer: impl ToPublicKey,
-        account_prefix: &str,
         denom: &Identifier,
     ) -> Result<Option<Account>> {
-        let account_address = signer.to_account_address(account_prefix)?;
+        let account_address = signer.to_account_address()?;
         account::get_account(&self.db_pool, &account_address, denom).await
     }
 
     /// Fetch balance of given denom
-    pub async fn balance(
-        &self,
-        signer: impl ToPublicKey,
-        account_prefix: &str,
-        denom: &Identifier,
-    ) -> Result<u32> {
-        let account_address = signer.to_account_address(account_prefix)?;
+    pub async fn balance(&self, signer: impl ToPublicKey, denom: &Identifier) -> Result<u32> {
+        let account_address = signer.to_account_address()?;
         let balance = account::get_account(&self.db_pool, &account_address, denom)
             .await?
             .map(|account| account.balance)
@@ -146,18 +128,17 @@ impl BankService {
     pub async fn history(
         &self,
         signer: impl ToPublicKey,
-        account_prefix: &str,
         limit: u32,
         offset: u32,
     ) -> Result<Vec<AccountOperation>> {
-        let account_address = signer.to_account_address(account_prefix)?;
+        let account_address = signer.to_account_address()?;
         account_operation::get_operations(&self.db_pool, &account_address, limit, offset).await
     }
 }
 
 /// Adds tokens in an account
-pub async fn add_tokens<'e>(
-    acquire: impl Acquire<'e, Database = Db>,
+pub async fn add_tokens(
+    transaction: &mut Transaction<'_, Db>,
     address: &str,
     amount: u32,
     denom: &Identifier,
@@ -168,19 +149,17 @@ pub async fn add_tokens<'e>(
         "incorrect operation type when adding tokens"
     );
 
-    let mut executor = acquire.acquire().await?;
-
-    account_operation::add_operation(&mut *executor, &address, denom, amount, &operation_type)
+    account_operation::add_operation(&mut *transaction, &address, denom, amount, &operation_type)
         .await?;
 
-    let account_exists = account::get_account(&mut *executor, &address, denom)
+    let account_exists = account::get_account(&mut *transaction, &address, denom)
         .await?
         .is_some();
 
     if account_exists {
-        account::add_balance(&mut *executor, &address, denom, amount).await?;
+        account::add_balance(&mut *transaction, &address, denom, amount).await?;
     } else {
-        account::add_account(&mut *executor, &address, denom, amount).await?;
+        account::add_account(&mut *transaction, &address, denom, amount).await?;
     }
 
     Ok(())

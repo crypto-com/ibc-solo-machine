@@ -5,6 +5,7 @@ mod ibc;
 use std::{
     fmt::Display,
     io::{stdout, Write},
+    net::SocketAddr,
 };
 
 use anyhow::{anyhow, ensure, Context, Result};
@@ -13,6 +14,8 @@ use cli_table::{Cell, Row, RowStruct, Style};
 use solo_machine_core::{signer::MnemonicSigner, DbPool, Signer, MIGRATOR};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
+
+use crate::server::start_grpc;
 
 use self::{bank::BankCommand, chain::ChainCommand, ibc::IbcCommand};
 
@@ -62,6 +65,12 @@ pub enum SubCommand {
     Ibc(IbcSubCommand),
     /// Initializes database for solo machine
     Init,
+    /// Starts gRPC server for solo machine
+    Start {
+        /// gRPC server address
+        #[structopt(short, long, env = "SOLO_GRPC_ADDR", default_value = "0.0.0.0:9000")]
+        addr: SocketAddr,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -99,17 +108,19 @@ impl Command {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path)?;
+                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
 
-                bank.subcommand
-                    .execute(db_pool, signer, &self.account_prefix.unwrap(), color_choice)
-                    .await
+                bank.subcommand.execute(db_pool, signer, color_choice).await
             }
             SubCommand::Chain(chain) => {
+                ensure!(
+                    self.account_prefix.is_some(),
+                    "`account-prefix` is required for chain commands"
+                );
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path)?;
+                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
 
                 chain
                     .subcommand
@@ -121,10 +132,14 @@ impl Command {
                 Ok(())
             }
             SubCommand::Ibc(ibc) => {
+                ensure!(
+                    self.account_prefix.is_some(),
+                    "`account-prefix` is required for ibc commands"
+                );
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path)?;
+                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
 
                 ibc.subcommand.execute(db_pool, signer, color_choice).await
             }
@@ -148,6 +163,18 @@ impl Command {
                     "Initialized solo machine!",
                 )
             }
+            SubCommand::Start { addr } => {
+                ensure!(
+                    self.account_prefix.is_some(),
+                    "`account-prefix` is required for gRPC server"
+                );
+                ensure!(self.db_path.is_some(), "`db-path` is required");
+
+                let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
+                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
+
+                start_grpc(db_pool, signer, addr).await
+            }
         }
     }
 }
@@ -158,13 +185,18 @@ async fn get_db_pool(db_path: &str) -> Result<DbPool> {
         .context("unable to connect to database")
 }
 
-fn get_signer(mnemonic: Option<String>, hd_path: String) -> Result<impl Signer> {
+fn get_signer(
+    mnemonic: Option<String>,
+    hd_path: String,
+    account_prefix: String,
+) -> Result<impl Signer + Clone> {
     match mnemonic {
         None => Err(anyhow!("currently, only mnemonic signer is supported")),
         Some(ref mnemonic) => Ok(MnemonicSigner {
             mnemonic: Mnemonic::from_phrase(mnemonic, Language::English)
                 .context("invalid mnemonic")?,
             hd_path,
+            account_prefix,
         }),
     }
 }

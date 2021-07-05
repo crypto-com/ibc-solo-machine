@@ -40,7 +40,6 @@ impl BankCommand {
         self,
         db_pool: DbPool,
         signer: impl Signer,
-        account_prefix: &str,
         color_choice: ColorChoice,
     ) -> Result<()> {
         let (sender, mut receiver) = unbounded_channel();
@@ -104,17 +103,13 @@ impl BankCommand {
 
             match self {
                 Self::Mint { amount, denom } => {
-                    bank_service
-                        .mint(signer, account_prefix, amount, denom.clone())
-                        .await
+                    bank_service.mint(signer, amount, denom.clone()).await
                 }
                 Self::Burn { amount, denom } => {
-                    bank_service
-                        .burn(signer, account_prefix, amount, denom.clone())
-                        .await
+                    bank_service.burn(signer, amount, denom.clone()).await
                 }
                 Self::Account { denom } => {
-                    let account = bank_service.account(signer, account_prefix, &denom).await?;
+                    let account = bank_service.account(signer, &denom).await?;
 
                     match account {
                         None => {
@@ -140,7 +135,7 @@ impl BankCommand {
                     }
                 }
                 Self::Balance { denom } => {
-                    let balance = bank_service.balance(signer, account_prefix, &denom).await?;
+                    let balance = bank_service.balance(signer, &denom).await?;
 
                     let table = vec![vec![
                         "Balance".cell().bold(true),
@@ -152,9 +147,7 @@ impl BankCommand {
                     print_stdout(table).context("unable to print table to stdout")
                 }
                 Self::History { limit, offset } => {
-                    let history = bank_service
-                        .history(signer, account_prefix, limit, offset)
-                        .await?;
+                    let history = bank_service.history(signer, limit, offset).await?;
 
                     let table = history
                         .into_iter()
