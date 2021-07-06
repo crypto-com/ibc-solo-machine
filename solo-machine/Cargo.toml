@@ -16,13 +16,18 @@ num-rational = "0.4.0"
 prost = "0.7.0"
 prost-types = "0.7.0"
 rust_decimal = "1.14.3"
-solo-machine-core = { path="../solo-machine-core" }
+solo-machine-core = { path="../solo-machine-core", features=["mnemonic-signer"] }
 structopt = "0.3.22"
 tendermint = "0.20.0"
 termcolor = "1.1.2"
 tiny-bip39 = "0.8.0"
 tokio = { version="1.8.0", features=["fs", "macros", "rt-multi-thread"] }
 tonic = "0.4.3"
+
+[features]
+default = []
+ethermint = ["solo-machine-core/ethermint"]
+solomachine-v2 = ["solo-machine-core/solomachine-v2"]
 
 [build-dependencies]
 prost-build = "0.7.0"

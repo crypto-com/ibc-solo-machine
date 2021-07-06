@@ -11,13 +11,18 @@ use std::{
 use anyhow::{anyhow, ensure, Context, Result};
 use bip39::{Language, Mnemonic};
 use cli_table::{Cell, Row, RowStruct, Style};
-use solo_machine_core::{signer::MnemonicSigner, DbPool, Signer, MIGRATOR};
+use solo_machine_core::{
+    signer::{AddressAlgo, MnemonicSigner},
+    DbPool, Signer, MIGRATOR,
+};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::server::start_grpc;
 
 use self::{bank::BankCommand, chain::ChainCommand, ibc::IbcCommand};
+
+const ADDRESS_ALGO_VARIANTS: [&str; 2] = ["secp256k1", "eth-secp256k1"];
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -37,6 +42,9 @@ pub struct Command {
     /// Mnemonic phrase for account on IBC enabled chain
     #[structopt(long, env = "SOLO_MNEMONIC", hide_env_values = true)]
     mnemonic: Option<String>,
+    /// Algoritm to use for generating addresses
+    #[structopt(long, possible_values = &ADDRESS_ALGO_VARIANTS, default_value = "secp256k1", env = "SOLO_ADDRESS_ALGO", hide_env_values = true)]
+    address_algo: AddressAlgo,
     /// HD wallet path to be used when deriving public key from mnemonic
     #[structopt(
         long,
@@ -108,7 +116,12 @@ impl Command {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
+                let signer = get_signer(
+                    self.mnemonic,
+                    self.hd_path,
+                    self.account_prefix.unwrap(),
+                    self.address_algo,
+                )?;
 
                 bank.subcommand.execute(db_pool, signer, color_choice).await
             }
@@ -120,7 +133,12 @@ impl Command {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
+                let signer = get_signer(
+                    self.mnemonic,
+                    self.hd_path,
+                    self.account_prefix.unwrap(),
+                    self.address_algo,
+                )?;
 
                 chain
                     .subcommand
@@ -139,7 +157,12 @@ impl Command {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
+                let signer = get_signer(
+                    self.mnemonic,
+                    self.hd_path,
+                    self.account_prefix.unwrap(),
+                    self.address_algo,
+                )?;
 
                 ibc.subcommand.execute(db_pool, signer, color_choice).await
             }
@@ -171,7 +194,12 @@ impl Command {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(self.mnemonic, self.hd_path, self.account_prefix.unwrap())?;
+                let signer = get_signer(
+                    self.mnemonic,
+                    self.hd_path,
+                    self.account_prefix.unwrap(),
+                    self.address_algo,
+                )?;
 
                 start_grpc(db_pool, signer, addr).await
             }
@@ -189,6 +217,7 @@ fn get_signer(
     mnemonic: Option<String>,
     hd_path: String,
     account_prefix: String,
+    algo: AddressAlgo,
 ) -> Result<impl Signer + Clone> {
     match mnemonic {
         None => Err(anyhow!("currently, only mnemonic signer is supported")),
@@ -197,6 +226,7 @@ fn get_signer(
                 .context("invalid mnemonic")?,
             hd_path,
             account_prefix,
+            algo,
         }),
     }
 }

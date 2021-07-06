@@ -30,6 +30,14 @@ pub mod ethermint {
             tonic::include_proto!("ethermint.types.v1alpha1");
         }
     }
+
+    pub mod crypto {
+        pub mod v1alpha1 {
+            pub mod ethsecp256k1 {
+                tonic::include_proto!("ethermint.crypto.v1alpha1.ethsecp256k1");
+            }
+        }
+    }
 }
 
 #[cfg(feature = "solomachine-v2")]
