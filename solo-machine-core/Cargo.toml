@@ -13,7 +13,7 @@ chrono = "0.4.19"
 cosmos-sdk-proto = "0.5.0"
 ed25519-dalek = "1.0.1"
 hex = { version="0.4.3", features=["serde"] }
-k256 = { version="0.9.4", features=["ecdsa", "sha256"], optional=true }
+k256 = { version="0.9.4", features=["ecdsa"] }
 num-rational = { version="0.4.0", features=["serde"] }
 prost = "0.7.0"
 prost-types = "0.7.0"
@@ -24,6 +24,7 @@ rust_decimal = "1.14.3"
 serde = { version="1.0.126", features=["derive"] }
 serde_json = "1.0.64"
 sha2 = "0.9.5"
+sha3 = { version="0.9.1", optional=true }
 sqlx = { version="0.5.5", features=[
     "json",
     "macros",
@@ -45,6 +46,6 @@ tonic-build = "0.4.2"
 
 [features]
 default = ["mnemonic-signer"]
-ethermint = ["solomachine-v2"]
-mnemonic-signer = ["k256", "tiny-bip39", "tiny-hderive"]
+ethermint = ["sha3", "solomachine-v2"]
+mnemonic-signer = ["tiny-bip39", "tiny-hderive"]
 solomachine-v2 = []

@@ -10,7 +10,9 @@ use cosmos_sdk_proto::cosmos::auth::v1beta1::BaseAccount;
 use prost::Message;
 use prost_types::Any;
 
-use crate::proto::{ethermint::types::v1alpha1::EthAccount, AnyConvert};
+#[cfg(feature = "ethermint")]
+use crate::proto::ethermint::types::v1alpha1::EthAccount;
+use crate::proto::AnyConvert;
 
 use self::base_account::TYPE_URL as BASE_ACCOUNT_TYPE_URL;
 #[cfg(feature = "ethermint")]
@@ -27,6 +29,7 @@ impl Account {
     pub fn get_base_account(&self) -> Option<&BaseAccount> {
         match self {
             Self::Base(ref account) => Some(account),
+            #[cfg(feature = "ethermint")]
             Self::Eth(ref account) => account.get_base_account(),
         }
     }
@@ -39,6 +42,7 @@ impl AnyConvert for Account {
                 let base_account: BaseAccount = BaseAccount::decode(value.value.as_slice())?;
                 Ok(Self::Base(base_account))
             }
+            #[cfg(feature = "ethermint")]
             ETH_ACCOUNT_TYPE_URL => {
                 let eth_account: EthAccount = EthAccount::decode(value.value.as_slice())?;
                 Ok(Self::Eth(eth_account))
@@ -50,6 +54,7 @@ impl AnyConvert for Account {
     fn to_any(&self) -> Result<Any> {
         match self {
             Self::Base(ref account) => account.to_any(),
+            #[cfg(feature = "ethermint")]
             Self::Eth(ref account) => account.to_any(),
         }
     }

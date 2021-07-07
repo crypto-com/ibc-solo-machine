@@ -82,7 +82,7 @@ use crate::{
         },
     },
     model::{chain, ibc as ibc_handler, Chain},
-    proto::{cosmos::crypto::secp256k1::PubKey as Secp256k1PubKey, proto_encode, AnyConvert},
+    proto::{proto_encode, AnyConvert},
     Db, Signer, ToPublicKey,
 };
 
@@ -94,7 +94,7 @@ pub async fn msg_create_solo_machine_client(
     chain: &Chain,
     memo: String,
 ) -> Result<TxRaw> {
-    let any_public_key = to_any_public_key(signer.to_public_key()?)?;
+    let any_public_key = signer.to_public_key()?.to_any()?;
 
     let consensus_state = SoloMachineConsensusState {
         public_key: Some(any_public_key),
@@ -137,7 +137,7 @@ pub async fn msg_update_solo_machine_client<'e>(
         );
     }
 
-    let any_public_key = to_any_public_key(signer.to_public_key()?)?;
+    let any_public_key = signer.to_public_key()?.to_any()?;
 
     let sequence = chain.sequence.into();
 
@@ -520,7 +520,7 @@ fn build_auth_info(
     account_sequence: u64,
 ) -> Result<AuthInfo> {
     let signer_info = SignerInfo {
-        public_key: Some(to_any_public_key(signer.to_public_key()?)?),
+        public_key: Some(signer.to_public_key()?.to_any()?),
         mode_info: Some(ModeInfo {
             sum: Some(Sum::Single(Single { mode: 1 })),
         }),
@@ -928,11 +928,6 @@ fn sign(signer: impl Signer, sign_bytes: SignBytes) -> Result<Vec<u8>> {
     };
 
     proto_encode(&signature_data)
-}
-
-fn to_any_public_key(key: Vec<u8>) -> Result<Any> {
-    let public_key = Secp256k1PubKey { key };
-    public_key.to_any()
 }
 
 fn to_u64_timestamp(timestamp: DateTime<Utc>) -> Result<u64> {

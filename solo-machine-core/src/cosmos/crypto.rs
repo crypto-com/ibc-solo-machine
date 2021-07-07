@@ -1,6 +1,8 @@
 //! Cosmos public key implementation
 #![allow(missing_docs)]
 mod ed25519;
+#[cfg(feature = "ethermint")]
+mod eth_secp256k1;
 mod multisig;
 mod secp256k1;
 
@@ -15,7 +17,11 @@ use prost::Message;
 use prost_types::Any;
 use ripemd160::{Digest, Ripemd160};
 use sha2::Sha256;
+#[cfg(feature = "ethermint")]
+use sha3::Keccak256;
 
+#[cfg(feature = "ethermint")]
+use crate::proto::ethermint::crypto::v1alpha1::ethsecp256k1::PubKey as EthSecp256k1PubKey;
 use crate::proto::{
     cosmos::crypto::{
         ed25519::PubKey as Ed25519PubKey, multisig::LegacyAminoPubKey,
@@ -24,6 +30,8 @@ use crate::proto::{
     proto_encode, AnyConvert,
 };
 
+#[cfg(feature = "ethermint")]
+use self::eth_secp256k1::ETH_SECP256K1_PUB_KEY_TYPE_URL;
 use self::{
     ed25519::ED25519_PUB_KEY_TYPE_URL, multisig::MULTISIG_PUB_KEY_TYPE_URL,
     secp256k1::SECP256K1_PUB_KEY_TYPE_URL,
@@ -31,6 +39,8 @@ use self::{
 
 #[derive(Debug)]
 pub enum PublicKey {
+    #[cfg(feature = "ethermint")]
+    EthSecp256k1(k256::ecdsa::VerifyingKey),
     Secp256k1(k256::ecdsa::VerifyingKey),
     Ed25519(ed25519_dalek::PublicKey),
     Multisig(MultisigPublicKey),
@@ -70,12 +80,32 @@ impl PublicKey {
             (PublicKey::Multisig(ref public_key), SignatureData::Multi(ref signature_data)) => {
                 public_key.verify_multi_signature(message, signature_data)
             }
+            #[cfg(feature = "ethermint")]
+            (
+                PublicKey::EthSecp256k1(ref public_key),
+                SignatureData::Single(ref signature_data),
+            ) => {
+                let signature =
+                    k256::ecdsa::Signature::try_from(signature_data.signature.as_slice())?;
+                k256::ecdsa::signature::Verifier::verify(public_key, message, &signature)
+                    .map_err(Into::into)
+            }
             _ => Err(anyhow!("invalid public key for signature type")),
         }
     }
 
     fn address_bytes(&self) -> Result<Vec<u8>> {
         match self {
+            #[cfg(feature = "ethermint")]
+            Self::EthSecp256k1(ref key) => {
+                use k256::EncodedPoint;
+
+                let encoded_point: EncodedPoint = key.into();
+                let hash =
+                    Keccak256::digest(&encoded_point.to_untagged_bytes().unwrap())[12..].to_vec();
+
+                Ok(hash)
+            }
             Self::Secp256k1(ref key) => {
                 Ok(Ripemd160::digest(&Sha256::digest(&key.to_bytes())).to_vec())
             }
@@ -98,6 +128,12 @@ impl From<k256::ecdsa::VerifyingKey> for PublicKey {
 impl AnyConvert for PublicKey {
     fn from_any(value: &Any) -> Result<Self> {
         match value.type_url.as_str() {
+            #[cfg(feature = "ethermint")]
+            ETH_SECP256K1_PUB_KEY_TYPE_URL => {
+                let public_key: EthSecp256k1PubKey =
+                    EthSecp256k1PubKey::decode(value.value.as_slice())?;
+                Ok(Self::EthSecp256k1(TryFrom::try_from(&public_key)?))
+            }
             SECP256K1_PUB_KEY_TYPE_URL => {
                 let public_key: Secp256k1PubKey = Secp256k1PubKey::decode(value.value.as_slice())?;
                 Ok(Self::Secp256k1(TryFrom::try_from(&public_key)?))
@@ -117,6 +153,11 @@ impl AnyConvert for PublicKey {
 
     fn to_any(&self) -> Result<Any> {
         match self {
+            #[cfg(feature = "ethermint")]
+            Self::EthSecp256k1(ref key) => {
+                let public_key: EthSecp256k1PubKey = key.into();
+                public_key.to_any()
+            }
             Self::Secp256k1(ref key) => {
                 let public_key: Secp256k1PubKey = key.into();
                 public_key.to_any()
