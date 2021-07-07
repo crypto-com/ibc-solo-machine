@@ -1,0 +1,18 @@
+Crypto.com Chain
+Copyright 2021, Foris Limited ("Crypto.com"). 
+
+This project contains portions of code derived from the following libraries:
+
+* Cosmos SDK
+ * Copyright: Copyright (c) 2016-2020 All in Bits, Inc
+ * License: Apache License 2.0
+ * Repository: https://github.com/cosmos/cosmos-sdk
+
+* IBC
+ * Copyright: Copyright (c) 2021 COSMOS
+ * License: MIT License
+ * Repository: https://github.com/cosmos/ibc-go
+
+* Ehtermint
+ * License: Apache License 2.0
+ * Repository: https://github.com/tharsis/ethermint
