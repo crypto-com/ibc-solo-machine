@@ -13,6 +13,7 @@ This project contains portions of code derived from the following libraries:
  * License: MIT License
  * Repository: https://github.com/cosmos/ibc-go
 
-* Ehtermint
+* Ethermint
+ * Copyright: Copyright (c) 2016-2021 Ethermint contributors
  * License: Apache License 2.0
  * Repository: https://github.com/tharsis/ethermint
