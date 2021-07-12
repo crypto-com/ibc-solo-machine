@@ -44,7 +44,7 @@ SUBCOMMANDS:
 
 - `bank` sub-command is used to mint, burn tokens on solo machine and it also has options to get current balance and
   account history on solo machine.
-- `chain` sub-command is used to manage an IBC enabled chain's state and metadata on solo machine, for example, it's
+- `chain` sub-command is used to manage an IBC enabled chain's state and metadata on solo machine, for example, its
   gRPC address, fee configuration, etc.
 - `ibc` sub-command is used to broadcast IBC related transacions to cosmos SDK chain. This includes `connect`, `send`
   (send tokens from solo machine to cosmos SDK chain) and `receive` (receive tokens from cosmos SDK chain to solo
