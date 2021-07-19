@@ -65,7 +65,7 @@ use tendermint_light_client::supervisor::Instance;
 use tendermint_rpc::Client;
 
 use crate::{
-    cosmos::account::Account,
+    cosmos::{account::Account, crypto::PublicKey},
     ibc::{
         client::ics07_tendermint::consensus_state::IConsensusState,
         core::{
@@ -128,6 +128,7 @@ pub async fn msg_update_solo_machine_client<'e>(
     executor: impl Executor<'e, Database = Db>,
     signer: impl Signer,
     chain: &mut Chain,
+    new_public_key: Option<&PublicKey>,
     memo: String,
 ) -> Result<TxRaw> {
     if chain.connection_details.is_none() {
@@ -137,9 +138,12 @@ pub async fn msg_update_solo_machine_client<'e>(
         );
     }
 
-    let any_public_key = signer.to_public_key()?.to_any()?;
-
     let sequence = chain.sequence.into();
+
+    let any_public_key = match new_public_key {
+        Some(new_public_key) => new_public_key.to_any()?,
+        None => signer.to_public_key()?.to_any()?,
+    };
 
     let signature = get_header_proof(
         &signer,

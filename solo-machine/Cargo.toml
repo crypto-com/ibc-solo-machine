@@ -7,21 +7,26 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.41"
-cli-table = { version="0.4.6", default-features=false, features=["derive"] }
+anyhow = "1.0.42"
+cli-table = { version = "0.4.6", default-features = false, features = [
+    "derive",
+] }
 dotenv = "0.15.0"
 hex = "0.4.3"
 humantime = "2.1.0"
+k256 = { version = "0.9.4", features = ["ecdsa"] }
 num-rational = "0.4.0"
 prost = "0.7.0"
 prost-types = "0.7.0"
 rust_decimal = "1.14.3"
-solo-machine-core = { path="../solo-machine-core", features=["mnemonic-signer"] }
+solo-machine-core = { path = "../solo-machine-core", features = [
+    "mnemonic-signer",
+] }
 structopt = "0.3.22"
 tendermint = "0.20.0"
 termcolor = "1.1.2"
 tiny-bip39 = "0.8.0"
-tokio = { version="1.8.0", features=["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1.8.1", features = ["fs", "macros", "rt-multi-thread"] }
 tonic = "0.4.3"
 
 [features]

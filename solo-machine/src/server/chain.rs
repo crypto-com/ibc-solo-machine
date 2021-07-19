@@ -162,7 +162,14 @@ where
 
         let chain_id = self
             .core_service
-            .add(&core_config)
+            .add(
+                &core_config,
+                &self
+                    .signer
+                    .to_public_key()
+                    .map_err(|err| Status::internal(err.to_string()))?
+                    .encode(),
+            )
             .await
             .map_err(|err| Status::internal(err.to_string()))?
             .to_string();

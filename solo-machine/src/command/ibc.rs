@@ -2,7 +2,9 @@ use std::io::Write;
 
 use anyhow::{bail, Context, Result};
 use cli_table::{print_stdout, Table};
+use k256::ecdsa::VerifyingKey;
 use solo_machine_core::{
+    cosmos::crypto::{PublicKey, PublicKeyAlgo},
     ibc::core::ics24_host::identifier::{ChainId, Identifier},
     service::IbcService,
     DbPool, Event, Signer,
@@ -12,6 +14,8 @@ use termcolor::{ColorChoice, ColorSpec, StandardStream};
 use tokio::sync::mpsc::unbounded_channel;
 
 use crate::command::{add_row, print_stream};
+
+const PUBLIC_KEY_ALGO_VARIANTS: [&str; 2] = ["secp256k1", "eth-secp256k1"];
 
 #[derive(Debug, StructOpt)]
 pub enum IbcCommand {
@@ -57,6 +61,25 @@ pub enum IbcCommand {
         denom: Identifier,
         /// Optional receiver address (if this is not provided, tokens will be received to signer's address)
         receiver: Option<String>,
+        /// Optional memo to include in transactions
+        #[structopt(
+            long,
+            default_value = "solo-machine-memo",
+            env = "SOLO_MEMO",
+            hide_env_values = true
+        )]
+        memo: String,
+    },
+    /// Updates signer's public key on IBC enabled chain for future messages from solo machine
+    UpdateSigner {
+        /// Chain ID of IBC enabled chain
+        chain_id: ChainId,
+        /// Hex encoded public key
+        #[structopt(long, env = "SOLO_NEW_PUBLIC_KEY", hide_env_values = true)]
+        new_public_key: String,
+        /// Type of public key
+        #[structopt(long, possible_values = &PUBLIC_KEY_ALGO_VARIANTS, default_value = "secp256k1", env = "SOLO_PUBLIC_KEY_ALGO", hide_env_values = true)]
+        public_key_algo: PublicKeyAlgo,
         /// Optional memo to include in transactions
         #[structopt(
             long,
@@ -124,6 +147,25 @@ impl IbcCommand {
                         add_row(&mut table, "To", to_address);
                         add_row(&mut table, "Amount", amount);
                         add_row(&mut table, "Denom", denom);
+
+                        print_stdout(table.table().color_choice(color_choice))
+                            .context("unable to print table to stdout")?;
+                    }
+                    Event::SignerUpdated {
+                        chain_id,
+                        old_public_key: _,
+                        new_public_key: _,
+                    } => {
+                        print_stream(
+                            &mut stdout,
+                            ColorSpec::new().set_bold(true),
+                            "Signer updated!",
+                        )?;
+                        writeln!(stdout)?;
+
+                        let mut table = Vec::new();
+
+                        add_row(&mut table, "Chain ID", chain_id);
 
                         print_stdout(table.table().color_choice(color_choice))
                             .context("unable to print table to stdout")?;
@@ -310,6 +352,28 @@ impl IbcCommand {
                 } => {
                     ibc_service
                         .receive_from_chain(signer, chain_id, amount, denom, receiver, memo)
+                        .await
+                }
+                Self::UpdateSigner {
+                    chain_id,
+                    new_public_key,
+                    public_key_algo,
+                    memo,
+                } => {
+                    let new_public_key_bytes =
+                        hex::decode(&new_public_key).context("unable to decode hex bytes")?;
+
+                    let new_verifying_key = VerifyingKey::from_sec1_bytes(&new_public_key_bytes)
+                        .context("invalid secp256k1 bytes")?;
+
+                    let new_public_key = match public_key_algo {
+                        PublicKeyAlgo::Secp256k1 => PublicKey::Secp256k1(new_verifying_key),
+                        #[cfg(feature = "ethermint")]
+                        PublicKeyAlgo::EthSecp256k1 => PublicKey::EthSecp256k1(new_verifying_key),
+                    };
+
+                    ibc_service
+                        .update_signer(signer, chain_id, new_public_key, memo)
                         .await
                 }
             }?;

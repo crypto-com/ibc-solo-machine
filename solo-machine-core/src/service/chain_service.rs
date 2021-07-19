@@ -1,4 +1,5 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
+use chain_keys::ChainKey;
 use rust_decimal::Decimal;
 use tendermint::node::Id as NodeId;
 use tendermint_rpc::{Client, HttpClient};
@@ -7,7 +8,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     event::notify_event,
     ibc::core::ics24_host::identifier::{ChainId, Identifier},
-    model::{chain, Chain, ChainConfig},
+    model::{
+        chain::{self, chain_keys},
+        Chain, ChainConfig,
+    },
     DbPool, Event, ToPublicKey,
 };
 
@@ -35,14 +39,26 @@ impl ChainService {
     }
 
     /// Add details of an IBC enabled chain
-    pub async fn add(&self, config: &ChainConfig) -> Result<ChainId> {
+    pub async fn add(&self, config: &ChainConfig, public_key: &str) -> Result<ChainId> {
         let tendermint_client = HttpClient::new(config.rpc_addr.as_str())?;
         let status = tendermint_client.status().await?;
 
         let chain_id: ChainId = status.node_info.network.to_string().parse()?;
         let node_id: NodeId = status.node_info.id;
 
-        chain::add_chain(&self.db_pool, &chain_id, &node_id, config).await?;
+        let mut transaction = self
+            .db_pool
+            .begin()
+            .await
+            .context("unable to begin database transaction")?;
+
+        chain::add_chain(&mut transaction, &chain_id, &node_id, config).await?;
+        chain_keys::add_chain_key(&mut transaction, &chain_id, public_key).await?;
+
+        transaction
+            .commit()
+            .await
+            .context("unable to commit transaction for adding IBC chain")?;
 
         notify_event(
             &self.notifier,
@@ -68,6 +84,16 @@ impl ChainService {
     /// Fetches details of a chain
     pub async fn get(&self, chain_id: &ChainId) -> Result<Option<Chain>> {
         chain::get_chain(&self.db_pool, chain_id).await
+    }
+
+    /// Fetches all the public keys associated with solo machine client on given chain
+    pub async fn get_public_keys(
+        &self,
+        chain_id: &ChainId,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<ChainKey>> {
+        chain_keys::get_chain_keys(&self.db_pool, chain_id, limit, offset).await
     }
 
     /// Fetches balance of given denom on IBC enabled chain

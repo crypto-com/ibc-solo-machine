@@ -8,5 +8,8 @@ pub use self::{
         account::Account,
         account_operation::{AccountOperation, OperationType},
     },
-    chain::{Chain, ChainConfig, ConnectionDetails, Fee},
+    chain::{
+        chain_keys::ChainKey,
+        {Chain, ChainConfig, ConnectionDetails, Fee},
+    },
 };

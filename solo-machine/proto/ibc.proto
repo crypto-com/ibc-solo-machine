@@ -11,6 +11,9 @@ service Ibc {
 
     // Receives tokens from IBC enabled chain to solo machine
     rpc ReceiveFromChain (ReceiveFromChainRequest) returns (ReceiveFromChainResponse);
+
+    // Updates signer's public key on IBC enabled chain for future messages from solo machine
+    rpc UpdateSigner (UpdateSignerRequest) returns (UpdateSignerResponse);
 }
 
 message ConnectRequest {
@@ -51,3 +54,16 @@ message ReceiveFromChainRequest {
 }
 
 message ReceiveFromChainResponse {}
+
+message UpdateSignerRequest {
+    // Chain ID of IBC enabled chain
+    string chain_id = 1;
+    // Memo value to be used in cosmos sdk transaction
+    optional string memo = 2;
+    // Hex encoded public key
+    string new_public_key = 3;
+    // Type of public key
+    optional string public_key_algo = 4;
+}
+
+message UpdateSignerResponse {}
