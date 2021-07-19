@@ -2,11 +2,13 @@ use anyhow::{anyhow, Result};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
+    cosmos::crypto::PublicKey,
     ibc::core::ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
     model::ConnectionDetails,
 };
 
 /// Events emitted by IBC service
+#[allow(clippy::large_enum_variant)]
 pub enum Event {
     // ----- IBC events ----- //
     /// Sent tokens from solo machine to IBC enabled chain
@@ -34,6 +36,15 @@ pub enum Event {
         amount: u32,
         /// Denom of tokens minted
         denom: Identifier,
+    },
+    /// Updated signer's public key on IBC enabled change for future messages from solo machine
+    SignerUpdated {
+        /// Chain ID of IBC enabled chain
+        chain_id: ChainId,
+        /// Old signer's public key
+        old_public_key: PublicKey,
+        /// New signer's public key
+        new_public_key: PublicKey,
     },
 
     // ----- IBC connection handshake events ----- //

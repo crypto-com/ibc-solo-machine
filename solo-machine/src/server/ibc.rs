@@ -1,6 +1,12 @@
 tonic::include_proto!("ibc");
 
-use solo_machine_core::{service::IbcService as CoreIbcService, DbPool, Signer};
+use k256::ecdsa::VerifyingKey;
+use solo_machine_core::{
+    cosmos::crypto::{PublicKey, PublicKeyAlgo},
+    ibc::core::ics24_host::identifier::ChainId,
+    service::IbcService as CoreIbcService,
+    DbPool, Signer,
+};
 use tonic::{Request, Response, Status};
 
 use self::ibc_server::Ibc;
@@ -99,5 +105,45 @@ where
             .map_err(|err| Status::internal(err.to_string()))?;
 
         Ok(Response::new(ReceiveFromChainResponse {}))
+    }
+
+    async fn update_signer(
+        &self,
+        request: Request<UpdateSignerRequest>,
+    ) -> Result<Response<UpdateSignerResponse>, Status> {
+        let request = request.into_inner();
+
+        let chain_id: ChainId = request
+            .chain_id
+            .parse()
+            .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
+
+        let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
+
+        let new_public_key_bytes = hex::decode(&request.new_public_key)
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
+
+        let new_verifying_key = VerifyingKey::from_sec1_bytes(&new_public_key_bytes)
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
+
+        let public_key_algo = request
+            .public_key_algo
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?
+            .unwrap_or(PublicKeyAlgo::Secp256k1);
+
+        let new_public_key = match public_key_algo {
+            PublicKeyAlgo::Secp256k1 => PublicKey::Secp256k1(new_verifying_key),
+            #[cfg(feature = "ethermint")]
+            PublicKeyAlgo::EthSecp256k1 => PublicKey::EthSecp256k1(new_verifying_key),
+        };
+
+        self.core_service
+            .update_signer(&self.signer, chain_id, new_public_key, memo)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        Ok(Response::new(UpdateSignerResponse {}))
     }
 }

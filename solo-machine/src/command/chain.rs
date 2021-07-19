@@ -1,13 +1,13 @@
 use std::{io::Write, time::Duration};
 
 use anyhow::{bail, ensure, Context, Result};
-use cli_table::{format::Justify, print_stdout, Cell, Row, Style, Table};
+use cli_table::{format::Justify, print_stdout, Cell, Row, RowStruct, Style, Table};
 use humantime::format_duration;
 use num_rational::Ratio;
 use rust_decimal::Decimal;
 use solo_machine_core::{
     ibc::core::ics24_host::identifier::{ChainId, Identifier, PortId},
-    model::{ChainConfig, Fee},
+    model::{ChainConfig, ChainKey, Fee},
     service::ChainService,
     DbPool, Event, ToPublicKey,
 };
@@ -122,6 +122,14 @@ pub enum ChainCommand {
     },
     /// Fetches current state and metadata for an IBC enabled chain
     Get { chain_id: ChainId },
+    /// Fetches all the public keys associated with solo machine client on given chain
+    GetPublicKeys {
+        chain_id: ChainId,
+        #[structopt(long, default_value = "10")]
+        limit: u32,
+        #[structopt(long, default_value)]
+        offset: u32,
+    },
     /// Returns the final denom of a token on solo machine after sending it on given chain
     GetIbcDenom {
         chain_id: ChainId,
@@ -214,7 +222,10 @@ impl ChainCommand {
                         trusted_hash,
                     };
 
-                    chain_service.add(&config).await.map(|_| ())
+                    chain_service
+                        .add(&config, &signer.to_public_key()?.encode())
+                        .await
+                        .map(|_| ())
                 }
                 Self::Get { ref chain_id } => {
                     let chain = chain_service.get(chain_id).await?;
@@ -329,6 +340,30 @@ impl ChainCommand {
                         }
                     }
                 }
+                Self::GetPublicKeys {
+                    ref chain_id,
+                    limit,
+                    offset,
+                } => {
+                    let keys = chain_service
+                        .get_public_keys(chain_id, limit, offset)
+                        .await?;
+
+                    let table = keys
+                        .into_iter()
+                        .map(into_row)
+                        .collect::<Vec<RowStruct>>()
+                        .table()
+                        .title(vec![
+                            "ID".cell().bold(true),
+                            "Chain ID".cell().bold(true),
+                            "Public key".cell().bold(true),
+                            "Created at".cell().bold(true),
+                        ])
+                        .color_choice(color_choice);
+
+                    print_stdout(table).context("unable to print table to stdout")
+                }
                 Self::GetIbcDenom {
                     ref chain_id,
                     ref denom,
@@ -377,4 +412,14 @@ fn parse_trusted_hash(hash: &str) -> Result<[u8; 32]> {
     trusted_hash.clone_from_slice(&bytes);
 
     Ok(trusted_hash)
+}
+
+fn into_row(key: ChainKey) -> RowStruct {
+    vec![
+        key.id.cell().justify(Justify::Right),
+        key.chain_id.cell(),
+        key.public_key.cell(),
+        key.created_at.cell(),
+    ]
+    .row()
 }

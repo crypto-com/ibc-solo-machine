@@ -8,9 +8,12 @@ mod secp256k1;
 
 pub use self::multisig::MultisigPublicKey;
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+};
 
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Error, Result};
 use bech32::{ToBase32, Variant};
 use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Sum as SignatureData;
 use prost::Message;
@@ -37,6 +40,29 @@ use self::{
     secp256k1::SECP256K1_PUB_KEY_TYPE_URL,
 };
 
+#[derive(Debug, Clone, Copy)]
+/// Supported public key algorithms
+pub enum PublicKeyAlgo {
+    /// EthSecp256k1 (ethermint)
+    #[cfg(feature = "ethermint")]
+    EthSecp256k1,
+    /// Secp256k1 (tendermint)
+    Secp256k1,
+}
+
+impl FromStr for PublicKeyAlgo {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            #[cfg(feature = "ethermint")]
+            "eth-secp256k1" => Ok(Self::EthSecp256k1),
+            "secp256k1" => Ok(Self::Secp256k1),
+            _ => Err(anyhow!("invalid public key algorithm: {}", s)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum PublicKey {
     #[cfg(feature = "ethermint")]
@@ -47,6 +73,16 @@ pub enum PublicKey {
 }
 
 impl PublicKey {
+    pub fn encode(&self) -> String {
+        match self {
+            #[cfg(feature = "ethermint")]
+            Self::EthSecp256k1(key) => hex::encode_upper(key.to_bytes()),
+            Self::Secp256k1(key) => hex::encode_upper(key.to_bytes()),
+            Self::Ed25519(key) => hex::encode_upper(key.as_bytes()),
+            Self::Multisig(_) => "unsupported key type".to_string(),
+        }
+    }
+
     pub fn address(&self) -> Result<String> {
         Ok(hex::encode(&self.address_bytes()?))
     }

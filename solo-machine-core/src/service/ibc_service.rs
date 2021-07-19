@@ -35,15 +35,15 @@ use tendermint_rpc::{
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
+    cosmos::crypto::PublicKey,
     event::{notify_event, Event},
     ibc::core::{
         ics02_client::{client_type::ClientType, height::IHeight},
         ics24_host::identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier, PortId},
     },
     model::{
-        bank::account_operation::OperationType,
-        chain::{self, Chain, ConnectionDetails as ChainConnectionDetails},
-        ibc as ibc_handler,
+        chain::{self, chain_keys},
+        ibc as ibc_handler, Chain, ConnectionDetails as ChainConnectionDetails, OperationType,
     },
     proto::proto_encode,
     service::bank_service,
@@ -362,6 +362,7 @@ impl IbcService {
             &mut transaction,
             &signer,
             &mut chain,
+            None,
             memo.clone(),
         )
         .await?;
@@ -414,6 +415,59 @@ impl IbcService {
                 to_address: receiver,
                 amount,
                 denom,
+            },
+        )
+    }
+
+    /// Updates signer for future IBC transactions
+    pub async fn update_signer(
+        &self,
+        signer: impl Signer,
+        chain_id: ChainId,
+        new_public_key: PublicKey,
+        memo: String,
+    ) -> Result<()> {
+        let mut transaction = self
+            .db_pool
+            .begin()
+            .await
+            .context("unable to begin database transaction")?;
+
+        let mut chain = chain::get_chain(&mut transaction, &chain_id)
+            .await?
+            .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+
+        chain_keys::add_chain_key(&mut transaction, &chain_id, &new_public_key.encode()).await?;
+
+        let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
+            .context("unable to connect to rpc client")?;
+
+        let msg = transaction_builder::msg_update_solo_machine_client(
+            &mut transaction,
+            &signer,
+            &mut chain,
+            Some(&new_public_key),
+            memo.clone(),
+        )
+        .await?;
+
+        let response = rpc_client
+            .broadcast_tx_commit(proto_encode(&msg)?.into())
+            .await?;
+
+        ensure_response_success(&response)?;
+
+        transaction
+            .commit()
+            .await
+            .context("unable to commit transaction for receiving tokens over IBC")?;
+
+        notify_event(
+            &self.notifier,
+            Event::SignerUpdated {
+                chain_id,
+                old_public_key: signer.to_public_key()?,
+                new_public_key,
             },
         )
     }
