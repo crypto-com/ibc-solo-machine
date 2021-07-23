@@ -13,7 +13,7 @@ chrono = "0.4.19"
 cosmos-sdk-proto = "0.5.0"
 ed25519-dalek = "1.0.1"
 hex = { version = "0.4.3", features = ["serde"] }
-k256 = { version = "0.9.4", features = ["ecdsa"] }
+k256 = { version = "0.9.6", features = ["ecdsa"] }
 num-rational = { version = "0.4.0", features = ["serde"] }
 prost = "0.7.0"
 prost-types = "0.7.0"
@@ -32,14 +32,14 @@ sqlx = { version = "0.5.5", features = [
     "sqlite",
     "chrono",
 ] }
-tendermint = "0.20.0"
-tendermint-light-client = "0.20.0"
-tendermint-rpc = { version = "0.20.0", features = ["http-client"] }
+tendermint = "0.21.0"
+tendermint-light-client = "0.21.0"
+tendermint-rpc = { version = "0.21.0", features = ["http-client"] }
 tiny-bip39 = { version = "0.8.0", optional = true }
 tiny-hderive = { version = "0.3.0", optional = true }
-tokio = { version = "1.8.1", features = ["sync"] }
+tokio = { version = "1.9.0", features = ["sync"] }
 tonic = "0.4.3"
-urlencoding = "2.0.0"
+urlencoding = "2.1.0"
 
 [build-dependencies]
 tonic-build = "0.5.1"
