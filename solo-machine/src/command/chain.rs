@@ -1,6 +1,6 @@
 use std::{io::Write, time::Duration};
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use cli_table::{format::Justify, print_stdout, Cell, Row, RowStruct, Style, Table};
 use humantime::format_duration;
 use num_rational::Ratio;
@@ -14,9 +14,9 @@ use solo_machine_core::{
 use structopt::StructOpt;
 use tendermint::block::Height as BlockHeight;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::command::{add_row, print_stream};
+use crate::command::add_row;
 
 #[derive(Debug, StructOpt)]
 pub enum ChainCommand {
@@ -147,54 +147,35 @@ impl ChainCommand {
         self,
         db_pool: DbPool,
         signer: impl ToPublicKey,
+        sender: UnboundedSender<Event>,
         color_choice: ColorChoice,
     ) -> Result<()> {
-        let (sender, mut receiver) = unbounded_channel();
+        let chain_service = ChainService::new_with_notifier(db_pool, sender);
 
-        let handle = tokio::spawn(async move {
-            let mut stdout = StandardStream::stdout(color_choice);
-
-            while let Some(event) = receiver.recv().await {
-                match event {
-                    Event::ChainAdded { chain_id } => {
-                        print_stream(
-                            &mut stdout,
-                            ColorSpec::new().set_bold(true),
-                            "New chain added!",
-                        )?;
-
-                        writeln!(stdout)?;
-
-                        let table = vec![vec![
-                            "Chain ID".cell().bold(true),
-                            format!("{}", chain_id)
-                                .cell()
-                                .bold(true)
-                                .foreground_color(Some(Color::Green))
-                                .justify(Justify::Right),
-                        ]]
-                        .table()
-                        .color_choice(color_choice);
-
-                        print_stdout(table).context("unable to print table to stdout")?;
-                    }
-                    _ => bail!("non-chain event in chain command"),
-                }
-            }
-
-            Ok(())
-        });
-
-        {
-            let chain_service = ChainService::new_with_notifier(db_pool, sender);
-
-            match self {
-                Self::Add {
+        match self {
+            Self::Add {
+                grpc_addr,
+                rpc_addr,
+                fee_amount,
+                fee_denom,
+                gas_limit,
+                trust_level,
+                trusting_period,
+                max_clock_drift,
+                rpc_timeout,
+                diversifier,
+                port_id,
+                trusted_height,
+                trusted_hash,
+            } => {
+                let config = ChainConfig {
                     grpc_addr,
                     rpc_addr,
-                    fee_amount,
-                    fee_denom,
-                    gas_limit,
+                    fee: Fee {
+                        amount: fee_amount,
+                        denom: fee_denom,
+                        gas_limit,
+                    },
                     trust_level,
                     trusting_period,
                     max_clock_drift,
@@ -203,202 +184,181 @@ impl ChainCommand {
                     port_id,
                     trusted_height,
                     trusted_hash,
-                } => {
-                    let config = ChainConfig {
-                        grpc_addr,
-                        rpc_addr,
-                        fee: Fee {
-                            amount: fee_amount,
-                            denom: fee_denom,
-                            gas_limit,
-                        },
-                        trust_level,
-                        trusting_period,
-                        max_clock_drift,
-                        rpc_timeout,
-                        diversifier,
-                        port_id,
-                        trusted_height,
-                        trusted_hash,
-                    };
+                };
 
-                    chain_service
-                        .add(&config, &signer.to_public_key()?.encode())
-                        .await
-                        .map(|_| ())
-                }
-                Self::Get { ref chain_id } => {
-                    let chain = chain_service.get(chain_id).await?;
+                chain_service
+                    .add(&config, &signer.to_public_key()?.encode())
+                    .await
+                    .map(|_| ())
+            }
+            Self::Get { ref chain_id } => {
+                let chain = chain_service.get(chain_id).await?;
 
-                    match chain {
-                        None => {
-                            let mut stdout = StandardStream::stdout(color_choice);
-                            stdout.set_color(
-                                ColorSpec::new().set_bold(true).set_fg(Some(Color::Red)),
-                            )?;
-                            writeln!(&mut stdout, "Chain with id `{}` not found!", chain_id)
-                                .context("unable to write to stdout")?;
-                            stdout.reset().context("unable to reset stdout")
-                        }
-                        Some(ref chain) => {
-                            let mut table = Vec::new();
+                match chain {
+                    None => {
+                        let mut stdout = StandardStream::stdout(color_choice);
+                        stdout
+                            .set_color(ColorSpec::new().set_bold(true).set_fg(Some(Color::Red)))?;
+                        writeln!(&mut stdout, "Chain with id `{}` not found!", chain_id)
+                            .context("unable to write to stdout")?;
+                        stdout.reset().context("unable to reset stdout")
+                    }
+                    Some(ref chain) => {
+                        let mut table = Vec::new();
 
-                            add_row(&mut table, "ID", &chain.id);
-                            add_row(&mut table, "Node ID", &chain.node_id);
-                            add_row(&mut table, "gRPC address", &chain.config.grpc_addr);
-                            add_row(&mut table, "RPC address", &chain.config.rpc_addr);
-                            add_row(&mut table, "Fee amount", &chain.config.fee.amount);
-                            add_row(&mut table, "Fee denom", &chain.config.fee.denom);
-                            add_row(&mut table, "Gas limit", &chain.config.fee.gas_limit);
-                            add_row(&mut table, "Trust level", &chain.config.trust_level);
-                            add_row(
-                                &mut table,
-                                "Trusting period",
-                                format_duration(chain.config.trusting_period),
-                            );
-                            add_row(
-                                &mut table,
-                                "Maximum clock drift",
-                                format_duration(chain.config.max_clock_drift),
-                            );
-                            add_row(
-                                &mut table,
-                                "RPC timeout",
-                                format_duration(chain.config.rpc_timeout),
-                            );
-                            add_row(&mut table, "Diversifier", &chain.config.diversifier);
-                            add_row(&mut table, "Port ID", &chain.config.port_id);
-                            add_row(&mut table, "Trusted height", &chain.config.trusted_height);
-                            add_row(
-                                &mut table,
-                                "Trusted hash",
-                                hex::encode_upper(&chain.config.trusted_hash),
-                            );
-                            add_row(
-                                &mut table,
-                                "Consensus timestamp",
-                                &chain.consensus_timestamp,
-                            );
-                            add_row(&mut table, "Sequence", &chain.sequence);
-                            add_row(&mut table, "Packet sequence", &chain.packet_sequence);
+                        add_row(&mut table, "ID", &chain.id);
+                        add_row(&mut table, "Node ID", &chain.node_id);
+                        add_row(&mut table, "gRPC address", &chain.config.grpc_addr);
+                        add_row(&mut table, "RPC address", &chain.config.rpc_addr);
+                        add_row(&mut table, "Fee amount", &chain.config.fee.amount);
+                        add_row(&mut table, "Fee denom", &chain.config.fee.denom);
+                        add_row(&mut table, "Gas limit", &chain.config.fee.gas_limit);
+                        add_row(&mut table, "Trust level", &chain.config.trust_level);
+                        add_row(
+                            &mut table,
+                            "Trusting period",
+                            format_duration(chain.config.trusting_period),
+                        );
+                        add_row(
+                            &mut table,
+                            "Maximum clock drift",
+                            format_duration(chain.config.max_clock_drift),
+                        );
+                        add_row(
+                            &mut table,
+                            "RPC timeout",
+                            format_duration(chain.config.rpc_timeout),
+                        );
+                        add_row(&mut table, "Diversifier", &chain.config.diversifier);
+                        add_row(&mut table, "Port ID", &chain.config.port_id);
+                        add_row(&mut table, "Trusted height", &chain.config.trusted_height);
+                        add_row(
+                            &mut table,
+                            "Trusted hash",
+                            hex::encode_upper(&chain.config.trusted_hash),
+                        );
+                        add_row(
+                            &mut table,
+                            "Consensus timestamp",
+                            &chain.consensus_timestamp,
+                        );
+                        add_row(&mut table, "Sequence", &chain.sequence);
+                        add_row(&mut table, "Packet sequence", &chain.packet_sequence);
 
-                            match chain.connection_details {
-                                None => table.push(
+                        match chain.connection_details {
+                            None => table.push(
+                                vec![
+                                    "Connection status".cell().bold(true),
+                                    "Not Connected".cell().foreground_color(Some(Color::Red)),
+                                ]
+                                .row(),
+                            ),
+                            Some(ref connection_details) => {
+                                table.push(
                                     vec![
                                         "Connection status".cell().bold(true),
-                                        "Not Connected".cell().foreground_color(Some(Color::Red)),
+                                        "Connected".cell().foreground_color(Some(Color::Green)),
                                     ]
                                     .row(),
-                                ),
-                                Some(ref connection_details) => {
-                                    table.push(
-                                        vec![
-                                            "Connection status".cell().bold(true),
-                                            "Connected".cell().foreground_color(Some(Color::Green)),
-                                        ]
-                                        .row(),
-                                    );
+                                );
 
-                                    add_row(
-                                        &mut table,
-                                        "Solo machine client ID",
-                                        &connection_details.solo_machine_channel_id,
-                                    );
-                                    add_row(
-                                        &mut table,
-                                        "Tendermint client ID",
-                                        &connection_details.tendermint_client_id,
-                                    );
-                                    add_row(
-                                        &mut table,
-                                        "Solo machine connection ID",
-                                        &connection_details.solo_machine_connection_id,
-                                    );
-                                    add_row(
-                                        &mut table,
-                                        "Tendermint connection ID",
-                                        &connection_details.tendermint_connection_id,
-                                    );
-                                    add_row(
-                                        &mut table,
-                                        "Solo machine channel ID",
-                                        &connection_details.solo_machine_channel_id,
-                                    );
-                                    add_row(
-                                        &mut table,
-                                        "Tendermint channel ID",
-                                        &connection_details.tendermint_channel_id,
-                                    );
-                                }
+                                add_row(
+                                    &mut table,
+                                    "Solo machine client ID",
+                                    &connection_details.solo_machine_channel_id,
+                                );
+                                add_row(
+                                    &mut table,
+                                    "Tendermint client ID",
+                                    &connection_details.tendermint_client_id,
+                                );
+                                add_row(
+                                    &mut table,
+                                    "Solo machine connection ID",
+                                    &connection_details.solo_machine_connection_id,
+                                );
+                                add_row(
+                                    &mut table,
+                                    "Tendermint connection ID",
+                                    &connection_details.tendermint_connection_id,
+                                );
+                                add_row(
+                                    &mut table,
+                                    "Solo machine channel ID",
+                                    &connection_details.solo_machine_channel_id,
+                                );
+                                add_row(
+                                    &mut table,
+                                    "Tendermint channel ID",
+                                    &connection_details.tendermint_channel_id,
+                                );
                             }
-
-                            add_row(&mut table, "Created at", &chain.created_at);
-                            add_row(&mut table, "Updated at", &chain.updated_at);
-
-                            print_stdout(table.table().color_choice(color_choice))
-                                .context("unable to print table to stdout")
                         }
+
+                        add_row(&mut table, "Created at", &chain.created_at);
+                        add_row(&mut table, "Updated at", &chain.updated_at);
+
+                        print_stdout(table.table().color_choice(color_choice))
+                            .context("unable to print table to stdout")
                     }
                 }
-                Self::GetPublicKeys {
-                    ref chain_id,
-                    limit,
-                    offset,
-                } => {
-                    let keys = chain_service
-                        .get_public_keys(chain_id, limit, offset)
-                        .await?;
+            }
+            Self::GetPublicKeys {
+                ref chain_id,
+                limit,
+                offset,
+            } => {
+                let keys = chain_service
+                    .get_public_keys(chain_id, limit, offset)
+                    .await?;
 
-                    let table = keys
-                        .into_iter()
-                        .map(into_row)
-                        .collect::<Vec<RowStruct>>()
-                        .table()
-                        .title(vec![
-                            "ID".cell().bold(true),
-                            "Chain ID".cell().bold(true),
-                            "Public key".cell().bold(true),
-                            "Created at".cell().bold(true),
-                        ])
-                        .color_choice(color_choice);
-
-                    print_stdout(table).context("unable to print table to stdout")
-                }
-                Self::GetIbcDenom {
-                    ref chain_id,
-                    ref denom,
-                } => {
-                    let ibc_denom = chain_service.get_ibc_denom(chain_id, denom).await?;
-
-                    let table = vec![vec![
-                        "IBC denom".cell().bold(true),
-                        ibc_denom
-                            .cell()
-                            .bold(true)
-                            .foreground_color(Some(Color::Green))
-                            .justify(Justify::Right),
-                    ]]
+                let table = keys
+                    .into_iter()
+                    .map(into_row)
+                    .collect::<Vec<RowStruct>>()
                     .table()
+                    .title(vec![
+                        "ID".cell().bold(true),
+                        "Chain ID".cell().bold(true),
+                        "Public key".cell().bold(true),
+                        "Created at".cell().bold(true),
+                    ])
                     .color_choice(color_choice);
 
-                    print_stdout(table).context("unable to print table to stdout")
-                }
-                Self::Balance { chain_id, denom } => {
-                    let balance = chain_service.balance(signer, &chain_id, &denom).await?;
+                print_stdout(table).context("unable to print table to stdout")
+            }
+            Self::GetIbcDenom {
+                ref chain_id,
+                ref denom,
+            } => {
+                let ibc_denom = chain_service.get_ibc_denom(chain_id, denom).await?;
 
-                    let table = vec![vec![
-                        "Balance".cell().bold(true),
-                        format!("{} {}", balance, denom).cell(),
-                    ]]
-                    .table()
-                    .color_choice(color_choice);
+                let table = vec![vec![
+                    "IBC denom".cell().bold(true),
+                    ibc_denom
+                        .cell()
+                        .bold(true)
+                        .foreground_color(Some(Color::Green))
+                        .justify(Justify::Right),
+                ]]
+                .table()
+                .color_choice(color_choice);
 
-                    print_stdout(table).context("unable to print table to stdout")
-                }
-            }?;
+                print_stdout(table).context("unable to print table to stdout")
+            }
+            Self::Balance { chain_id, denom } => {
+                let balance = chain_service.balance(signer, &chain_id, &denom).await?;
+
+                let table = vec![vec![
+                    "Balance".cell().bold(true),
+                    format!("{} {}", balance, denom).cell(),
+                ]]
+                .table()
+                .color_choice(color_choice);
+
+                print_stdout(table).context("unable to print table to stdout")
+            }
         }
-
-        handle.await.context("unable to join async task")?
     }
 }
 

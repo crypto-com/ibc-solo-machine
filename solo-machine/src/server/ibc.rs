@@ -5,8 +5,9 @@ use solo_machine_core::{
     cosmos::crypto::{PublicKey, PublicKeyAlgo},
     ibc::core::ics24_host::identifier::ChainId,
     service::IbcService as CoreIbcService,
-    DbPool, Signer,
+    DbPool, Event, Signer,
 };
+use tokio::sync::mpsc::UnboundedSender;
 use tonic::{Request, Response, Status};
 
 use self::ibc_server::Ibc;
@@ -20,8 +21,8 @@ pub struct IbcService<S> {
 
 impl<S> IbcService<S> {
     /// Creates a new instance of gRPC IBC service
-    pub fn new(db_pool: DbPool, signer: S) -> Self {
-        let core_service = CoreIbcService::new(db_pool);
+    pub fn new(db_pool: DbPool, notifier: UnboundedSender<Event>, signer: S) -> Self {
+        let core_service = CoreIbcService::new_with_notifier(db_pool, notifier);
 
         Self {
             core_service,

@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.42"
+async-trait = "0.1.50"
 cli-table = { version = "0.4.6", default-features = false, features = [
     "derive",
 ] }
@@ -15,6 +16,7 @@ dotenv = "0.15.0"
 hex = "0.4.3"
 humantime = "2.1.0"
 k256 = { version = "0.9.6", features = ["ecdsa"] }
+libloading = "0.7.0"
 num-rational = "0.4.0"
 prost = "0.7.0"
 prost-types = "0.7.0"

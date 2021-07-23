@@ -3,6 +3,7 @@ use command::Command;
 use structopt::StructOpt;
 
 mod command;
+mod event;
 mod server;
 
 #[tokio::main]

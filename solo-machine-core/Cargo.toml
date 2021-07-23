@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.42"
+async-trait = "0.1.50"
 bech32 = "0.8.1"
 chrono = "0.4.19"
 cosmos-sdk-proto = "0.5.0"

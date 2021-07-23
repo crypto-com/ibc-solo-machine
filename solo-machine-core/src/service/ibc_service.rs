@@ -462,14 +462,7 @@ impl IbcService {
             .await
             .context("unable to commit transaction for receiving tokens over IBC")?;
 
-        notify_event(
-            &self.notifier,
-            Event::SignerUpdated {
-                chain_id,
-                old_public_key: signer.to_public_key()?,
-                new_public_key,
-            },
-        )
+        notify_event(&self.notifier, Event::SignerUpdated { chain_id })
     }
 }
 
