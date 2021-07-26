@@ -3,22 +3,28 @@ mod chain;
 mod ibc;
 
 use std::{
+    convert::TryFrom,
     fmt::Display,
     io::{stdout, Write},
     net::SocketAddr,
+    path::PathBuf,
 };
 
 use anyhow::{anyhow, ensure, Context, Result};
 use bip39::{Language, Mnemonic};
 use cli_table::{Cell, Row, RowStruct, Style};
 use solo_machine_core::{
+    event::HandlerRegistrar,
     signer::{AddressAlgo, MnemonicSigner},
     DbPool, Signer, MIGRATOR,
 };
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-use crate::server::start_grpc;
+use crate::{
+    event::{cli_event_handler::CliEventHandler, Registrar},
+    server::start_grpc,
+};
 
 use self::{bank::BankCommand, chain::ChainCommand, ibc::IbcCommand};
 
@@ -53,6 +59,11 @@ pub struct Command {
         hide_env_values = true
     )]
     hd_path: String,
+    /// Register an event handler. Multiple event handlers can be registered and they're executed in order they're
+    /// provided in CLI. Also, if an event handler returns an error when handling a message, all the future event
+    /// handlers will not get executed.
+    #[structopt(long)]
+    handler: Vec<PathBuf>,
     #[structopt(subcommand)]
     subcommand: SubCommand,
 }
@@ -123,7 +134,17 @@ impl Command {
                     self.address_algo,
                 )?;
 
-                bank.subcommand.execute(db_pool, signer, color_choice).await
+                let mut registrar = Registrar::try_from(self.handler)?;
+                registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                let (sender, handle) = registrar.spawn();
+
+                bank.subcommand
+                    .execute(db_pool, signer, sender, color_choice)
+                    .await?;
+
+                handle
+                    .await
+                    .context("unable to join event hook registrar task")?
             }
             SubCommand::Chain(chain) => {
                 ensure!(
@@ -140,10 +161,18 @@ impl Command {
                     self.address_algo,
                 )?;
 
+                let mut registrar = Registrar::try_from(self.handler)?;
+                registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                let (sender, handle) = registrar.spawn();
+
                 chain
                     .subcommand
-                    .execute(db_pool, signer, color_choice)
+                    .execute(db_pool, signer, sender, color_choice)
+                    .await?;
+
+                handle
                     .await
+                    .context("unable to join event hook registrar task")?
             }
             SubCommand::GenCompletion { shell } => {
                 Self::clap().gen_completions_to("solo-machine", shell, &mut stdout());
@@ -164,7 +193,15 @@ impl Command {
                     self.address_algo,
                 )?;
 
-                ibc.subcommand.execute(db_pool, signer, color_choice).await
+                let mut registrar = Registrar::try_from(self.handler)?;
+                registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                let (sender, handle) = registrar.spawn();
+
+                ibc.subcommand.execute(db_pool, signer, sender).await?;
+
+                handle
+                    .await
+                    .context("unable to join event hook registrar task")?
             }
             SubCommand::Init => {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
@@ -200,8 +237,14 @@ impl Command {
                     self.account_prefix.unwrap(),
                     self.address_algo,
                 )?;
+                let registrar = Registrar::try_from(self.handler)?;
+                let (sender, handle) = registrar.spawn();
 
-                start_grpc(db_pool, signer, addr).await
+                start_grpc(db_pool, signer, sender, addr).await?;
+
+                handle
+                    .await
+                    .context("unable to join event hook registrar task")?
             }
         }
     }

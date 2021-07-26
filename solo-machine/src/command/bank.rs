@@ -1,6 +1,4 @@
-use std::io::Write;
-
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use cli_table::{format::Justify, print_stdout, Cell, Color, Row, RowStruct, Style, Table};
 use solo_machine_core::{
     ibc::core::ics24_host::identifier::Identifier,
@@ -10,7 +8,7 @@ use solo_machine_core::{
 };
 use structopt::StructOpt;
 use termcolor::{ColorChoice, ColorSpec, StandardStream};
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::command::print_stream;
 
@@ -40,136 +38,73 @@ impl BankCommand {
         self,
         db_pool: DbPool,
         signer: impl Signer,
+        sender: UnboundedSender<Event>,
         color_choice: ColorChoice,
     ) -> Result<()> {
-        let (sender, mut receiver) = unbounded_channel();
+        let bank_service = BankService::new_with_notifier(db_pool, sender);
 
-        let handle = tokio::spawn(async move {
-            let mut stdout = StandardStream::stdout(color_choice);
+        match self {
+            Self::Mint { amount, denom } => bank_service.mint(signer, amount, denom.clone()).await,
+            Self::Burn { amount, denom } => bank_service.burn(signer, amount, denom.clone()).await,
+            Self::Account { denom } => {
+                let account = bank_service.account(signer, &denom).await?;
 
-            while let Some(event) = receiver.recv().await {
-                match event {
-                    Event::TokensMinted {
-                        address,
-                        amount,
-                        denom,
-                    } => {
+                match account {
+                    None => {
+                        let mut stdout = StandardStream::stdout(color_choice);
                         print_stream(
                             &mut stdout,
-                            ColorSpec::new().set_bold(true),
-                            "Tokens minted!",
-                        )?;
-                        writeln!(stdout)?;
-
+                            ColorSpec::new().set_bold(true).set_fg(Some(Color::Red)),
+                            format!("Account with denom `{}` not found!", denom),
+                        )
+                    }
+                    Some(account) => {
                         let mut table = Vec::new();
 
-                        add_row(&mut table, "Address", address);
-                        add_row(&mut table, "Amount", amount);
-                        add_row(&mut table, "Denom", denom);
+                        add_row(&mut table, "Address", account.address);
+                        add_row(&mut table, "Denom", account.denom);
+                        add_row(&mut table, "Balance", account.balance);
+                        add_row(&mut table, "Created at", account.created_at);
+                        add_row(&mut table, "Updated at", account.updated_at);
 
                         print_stdout(table.table().color_choice(color_choice))
-                            .context("unable to print table to stdout")?;
+                            .context("unable to print table to stdout")
                     }
-                    Event::TokensBurnt {
-                        address,
-                        amount,
-                        denom,
-                    } => {
-                        print_stream(
-                            &mut stdout,
-                            ColorSpec::new().set_bold(true),
-                            "Tokens burnt!",
-                        )?;
-                        writeln!(stdout)?;
-
-                        let mut table = Vec::new();
-
-                        add_row(&mut table, "Address", address);
-                        add_row(&mut table, "Amount", amount);
-                        add_row(&mut table, "Denom", denom);
-
-                        print_stdout(table.table().color_choice(color_choice))
-                            .context("unable to print table to stdout")?;
-                    }
-                    _ => bail!("non-bank event in bank command"),
                 }
             }
+            Self::Balance { denom } => {
+                let balance = bank_service.balance(signer, &denom).await?;
 
-            Ok(())
-        });
+                let table = vec![vec![
+                    "Balance".cell().bold(true),
+                    format!("{} {}", balance, denom).cell(),
+                ]]
+                .table()
+                .color_choice(color_choice);
 
-        {
-            let bank_service = BankService::new_with_notifier(db_pool, sender);
+                print_stdout(table).context("unable to print table to stdout")
+            }
+            Self::History { limit, offset } => {
+                let history = bank_service.history(signer, limit, offset).await?;
 
-            match self {
-                Self::Mint { amount, denom } => {
-                    bank_service.mint(signer, amount, denom.clone()).await
-                }
-                Self::Burn { amount, denom } => {
-                    bank_service.burn(signer, amount, denom.clone()).await
-                }
-                Self::Account { denom } => {
-                    let account = bank_service.account(signer, &denom).await?;
-
-                    match account {
-                        None => {
-                            let mut stdout = StandardStream::stdout(color_choice);
-                            print_stream(
-                                &mut stdout,
-                                ColorSpec::new().set_bold(true).set_fg(Some(Color::Red)),
-                                format!("Account with denom `{}` not found!", denom),
-                            )
-                        }
-                        Some(account) => {
-                            let mut table = Vec::new();
-
-                            add_row(&mut table, "Address", account.address);
-                            add_row(&mut table, "Denom", account.denom);
-                            add_row(&mut table, "Balance", account.balance);
-                            add_row(&mut table, "Created at", account.created_at);
-                            add_row(&mut table, "Updated at", account.updated_at);
-
-                            print_stdout(table.table().color_choice(color_choice))
-                                .context("unable to print table to stdout")
-                        }
-                    }
-                }
-                Self::Balance { denom } => {
-                    let balance = bank_service.balance(signer, &denom).await?;
-
-                    let table = vec![vec![
-                        "Balance".cell().bold(true),
-                        format!("{} {}", balance, denom).cell(),
-                    ]]
+                let table = history
+                    .into_iter()
+                    .map(into_row)
+                    .collect::<Vec<RowStruct>>()
                     .table()
+                    .title(vec![
+                        "ID".cell().bold(true),
+                        "Address".cell().bold(true),
+                        "Denom".cell().bold(true),
+                        "Amount".cell().bold(true),
+                        "Type".cell().bold(true),
+                        "Time".cell().bold(true),
+                    ])
                     .color_choice(color_choice);
 
-                    print_stdout(table).context("unable to print table to stdout")
-                }
-                Self::History { limit, offset } => {
-                    let history = bank_service.history(signer, limit, offset).await?;
-
-                    let table = history
-                        .into_iter()
-                        .map(into_row)
-                        .collect::<Vec<RowStruct>>()
-                        .table()
-                        .title(vec![
-                            "ID".cell().bold(true),
-                            "Address".cell().bold(true),
-                            "Denom".cell().bold(true),
-                            "Amount".cell().bold(true),
-                            "Type".cell().bold(true),
-                            "Time".cell().bold(true),
-                        ])
-                        .color_choice(color_choice);
-
-                    print_stdout(table).context("unable to print table to stdout")
-                }
-            }?;
+                print_stdout(table).context("unable to print table to stdout")
+            }
         }
-
-        handle.await.context("unable to join async task")?
     }
 }
 

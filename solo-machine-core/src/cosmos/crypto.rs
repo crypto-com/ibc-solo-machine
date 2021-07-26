@@ -16,9 +16,11 @@ use std::{
 use anyhow::{anyhow, ensure, Error, Result};
 use bech32::{ToBase32, Variant};
 use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Sum as SignatureData;
+use k256::ecdsa::VerifyingKey;
 use prost::Message;
 use prost_types::Any;
 use ripemd160::{Digest, Ripemd160};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::Sha256;
 #[cfg(feature = "ethermint")]
 use sha3::Keccak256;
@@ -63,11 +65,24 @@ impl FromStr for PublicKeyAlgo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum PublicKey {
     #[cfg(feature = "ethermint")]
-    EthSecp256k1(k256::ecdsa::VerifyingKey),
-    Secp256k1(k256::ecdsa::VerifyingKey),
+    EthSecp256k1(
+        #[serde(
+            serialize_with = "serialize_verifying_key",
+            deserialize_with = "deserialize_verifying_key"
+        )]
+        k256::ecdsa::VerifyingKey,
+    ),
+    Secp256k1(
+        #[serde(
+            serialize_with = "serialize_verifying_key",
+            deserialize_with = "deserialize_verifying_key"
+        )]
+        k256::ecdsa::VerifyingKey,
+    ),
     Ed25519(ed25519_dalek::PublicKey),
     Multisig(MultisigPublicKey),
 }
@@ -208,4 +223,19 @@ impl AnyConvert for PublicKey {
             }
         }
     }
+}
+
+fn serialize_verifying_key<S>(key: &VerifyingKey, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    hex::serialize_upper(key.to_bytes(), serializer)
+}
+
+fn deserialize_verifying_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes: Vec<u8> = hex::deserialize(deserializer)?;
+    VerifyingKey::from_sec1_bytes(&bytes).map_err(serde::de::Error::custom)
 }

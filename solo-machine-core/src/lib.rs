@@ -4,7 +4,7 @@
 pub mod proto;
 
 pub mod cosmos;
-pub(crate) mod event;
+pub mod event;
 pub mod ibc;
 pub mod model;
 pub mod service;

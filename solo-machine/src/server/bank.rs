@@ -2,7 +2,8 @@ tonic::include_proto!("bank");
 
 use std::time::SystemTime;
 
-use solo_machine_core::{service::BankService as CoreBankService, DbPool, Signer};
+use solo_machine_core::{service::BankService as CoreBankService, DbPool, Event, Signer};
+use tokio::sync::mpsc::UnboundedSender;
 use tonic::{Request, Response, Status};
 
 use self::bank_server::Bank;
@@ -14,8 +15,8 @@ pub struct BankService<S> {
 
 impl<S> BankService<S> {
     /// Creates a new instance of gRPC bank service
-    pub fn new(db_pool: DbPool, signer: S) -> Self {
-        let core_service = CoreBankService::new(db_pool);
+    pub fn new(db_pool: DbPool, notifier: UnboundedSender<Event>, signer: S) -> Self {
+        let core_service = CoreBankService::new_with_notifier(db_pool, notifier);
 
         Self {
             core_service,

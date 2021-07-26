@@ -9,8 +9,9 @@ use std::{
 use solo_machine_core::{
     model::{ChainConfig as CoreChainConfig, Fee},
     service::ChainService as CoreChainService,
-    DbPool, Signer,
+    DbPool, Event, Signer,
 };
+use tokio::sync::mpsc::UnboundedSender;
 use tonic::{Request, Response, Status};
 
 use self::chain_server::Chain;
@@ -34,8 +35,8 @@ pub struct ChainService<S> {
 
 impl<S> ChainService<S> {
     /// Creates a new instance of gRPC chain service
-    pub fn new(db_pool: DbPool, signer: S) -> Self {
-        let core_service = CoreChainService::new(db_pool);
+    pub fn new(db_pool: DbPool, notifier: UnboundedSender<Event>, signer: S) -> Self {
+        let core_service = CoreChainService::new_with_notifier(db_pool, notifier);
 
         Self {
             core_service,

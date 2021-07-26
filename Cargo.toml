@@ -1,2 +1,2 @@
 [workspace]
-members = ["solo-machine", "solo-machine-core"]
+members = ["solo-machine", "solo-machine-core", "event-hooks/stdout-logger"]
