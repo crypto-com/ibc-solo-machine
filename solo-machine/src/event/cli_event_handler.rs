@@ -134,7 +134,7 @@ impl EventHandler for CliEventHandler {
                 print_stdout(table.table().color_choice(self.color_choice))
                     .context("unable to print table to stdout")?;
             }
-            Event::SignerUpdated { chain_id } => {
+            Event::SignerUpdated { chain_id, .. } => {
                 print_stream(
                     &mut stdout,
                     ColorSpec::new().set_bold(true),

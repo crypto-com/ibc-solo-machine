@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 
 use anyhow::{anyhow, ensure, Error, Result};
 use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Multi as MultiSignatureData;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     cosmos::bit_array::BitArray,
@@ -12,7 +13,7 @@ use super::PublicKey;
 
 pub const MULTISIG_PUB_KEY_TYPE_URL: &str = "/cosmos.crypto.multisig.LegacyAminoPubKey";
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultisigPublicKey {
     pub threshold: u32,
     pub public_keys: Vec<PublicKey>,

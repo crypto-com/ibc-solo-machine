@@ -59,7 +59,9 @@ pub struct Command {
         hide_env_values = true
     )]
     hd_path: String,
-    /// Register an event handler
+    /// Register an event handler. Multiple event handlers can be registered and they're executed in order they're
+    /// provided in CLI. Also, if an event handler returns an error when handling a message, all the future event
+    /// handlers will not get executed.
     #[structopt(long)]
     handler: Vec<PathBuf>,
     #[structopt(subcommand)]
