@@ -21,7 +21,8 @@ jobs:
           override: true
       - uses: actions-rs/cargo@v1
         with:
-          command: check --all
+          command: check
+          args: --all
   test:
     name: cargo test
     runs-on: ubuntu-latest
