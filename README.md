@@ -50,7 +50,7 @@ SUBCOMMANDS:
   account history on solo machine.
 - `chain` sub-command is used to manage an IBC enabled chain's state and metadata on solo machine, for example, its
   gRPC address, fee configuration, etc.
-- `ibc` sub-command is used to broadcast IBC related transacions to cosmos SDK chain. This includes `connect`, `send`
+- `ibc` sub-command is used to broadcast IBC related transactions to cosmos SDK chain. This includes `connect`, `send`
   (send tokens from solo machine to cosmos SDK chain) and `receive` (receive tokens from cosmos SDK chain to solo
   machine).
 
@@ -71,7 +71,7 @@ transaction fee for IBC transactions.
 1. Create a `.env` file with `SOLO_ACCOUNT_PREFIX`, `SOLO_DB_PATH`, `SOLO_MNEMONIC` and `SOLO_HD_PATH` (if it is
    different from the default one).
 2. Run `solo-machine init` to initialize SQLite database.
-3. Add cosmos SDK chain details using `solo-machine chain add`. This command takes folloing options which can either be
+3. Add cosmos SDK chain details using `solo-machine chain add`. This command takes following options which can either be
    provided using command line options, environment variables or a `.env` file. The two most important things are
    `trusted-height` and `trusted-hash` which can be fetched from:
    `curl http://<ip>:<port>/block?height=<trusted-height>`.
