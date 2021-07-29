@@ -107,10 +107,10 @@ transaction fee for IBC transactions.
            --trusting-period <trusting-period>    Trusting period [env: SOLO_TRUSTING_PERIOD]  [default: 14 days]
    ```
 
-4. Establish IBC connection with the chain using `solo machine ibc connect <chain-id>`.
+4. Establish IBC connection with the chain using `solo-machine ibc connect <chain-id>`.
 5. Mint some tokens on solo machine using `solo-machine bank mint <amount> <denom>`.
-6. Send these tokens to cosmos SDK chain using `solo machine ibc send <chain-id> <amount> <denom>`.
-7. Receive some tokens from cosmos SDK chain using `solo machine ibc receive <chain-id> <amount> <denom>`. Note that the
+6. Send these tokens to cosmos SDK chain using `solo-machine ibc send <chain-id> <amount> <denom>`.
+7. Receive some tokens from cosmos SDK chain using `solo-machine ibc receive <chain-id> <amount> <denom>`. Note that the
    `denom` in `receive` command will be the denom on solo machine and not the IBC denom (`ibc/XXX`).
 
 ### Connecting to Ethermint

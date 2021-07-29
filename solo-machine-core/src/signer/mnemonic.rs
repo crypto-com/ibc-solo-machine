@@ -1,10 +1,9 @@
 use std::str::FromStr;
 
 use anyhow::{anyhow, Context, Error, Result};
-use bip39::{Mnemonic, Seed};
+use bip32::{DerivationPath, ExtendedPrivateKey, Mnemonic};
 use k256::ecdsa::{signature::DigestSigner, Signature, SigningKey};
 use ripemd160::Digest;
-use tiny_hderive::bip32::ExtendedPrivKey;
 
 use crate::{cosmos::crypto::PublicKey, Signer, ToPublicKey};
 
@@ -31,7 +30,7 @@ impl FromStr for AddressAlgo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 /// Signer implementation using mnemonic
 pub struct MnemonicSigner {
     /// Mnemonic of signer
@@ -46,11 +45,12 @@ pub struct MnemonicSigner {
 
 impl MnemonicSigner {
     fn get_signing_key(&self) -> Result<SigningKey> {
-        let seed = Seed::new(&self.mnemonic, "");
-        let private_key = ExtendedPrivKey::derive(seed.as_bytes(), self.hd_path.as_str()).unwrap();
+        let seed = self.mnemonic.to_seed("");
+        let hd_path = DerivationPath::from_str(&self.hd_path).context("invalid HD path")?;
+        let private_key =
+            ExtendedPrivateKey::<SigningKey>::derive_from_path(seed.as_bytes(), &hd_path).unwrap();
 
-        SigningKey::from_bytes(&private_key.secret())
-            .context("unable to compute signing key from verifying key")
+        Ok(private_key.into())
     }
 }
 

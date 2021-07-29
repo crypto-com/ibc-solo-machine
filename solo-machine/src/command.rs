@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::{anyhow, ensure, Context, Result};
-use bip39::{Language, Mnemonic};
+use bip32::{Language, Mnemonic};
 use cli_table::{Cell, Row, RowStruct, Style};
 use solo_machine_core::{
     event::HandlerRegistrar,
@@ -265,8 +265,8 @@ fn get_signer(
     match mnemonic {
         None => Err(anyhow!("currently, only mnemonic signer is supported")),
         Some(ref mnemonic) => Ok(MnemonicSigner {
-            mnemonic: Mnemonic::from_phrase(mnemonic, Language::English)
-                .context("invalid mnemonic")?,
+            mnemonic: Mnemonic::new(mnemonic, Language::English)
+                .map_err(|_| anyhow!("invalid mnemonic"))?,
             hd_path,
             account_prefix,
             algo,
