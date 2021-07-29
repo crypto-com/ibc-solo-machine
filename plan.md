@@ -39,7 +39,7 @@ client on IBC enabled chain and a tendermint client on IBC enabled solo-machine.
 
     ```rust
     let client_state = ClientState {
-        chain_id: "chain id of ibc enbled chain (provided by user)",
+        chain_id: "chain id of ibc enabled chain (provided by user)",
         trust_level: "provide by user (default value = 1/3)"
         trusting_period: "provided by user (default value = 336 * 60 * 60 = 336 hours)"
         unbonding_period: "unbonding period of ibc enabled chain (can be obtained from grpc query, see notes below)",
@@ -70,7 +70,7 @@ client on IBC enabled chain and a tendermint client on IBC enabled solo-machine.
 
     Finally, pass these values to `IbcTxHandler` of solo-machine.
 
-1. After `IbcTxHandler` on solo-machine recieves `client_state` and `consensus_state`: [code](https://github.com/devashishdxt/ibc/blob/55786f270350c57ce691a1ba8b420aefd63de63c/solo-machine/src/ibc_handler.rs#L26)
+1. After `IbcTxHandler` on solo-machine receives `client_state` and `consensus_state`: [code](https://github.com/devashishdxt/ibc/blob/55786f270350c57ce691a1ba8b420aefd63de63c/solo-machine/src/ibc_handler.rs#L26)
 
     - Generate a `client_id`
     - Store `client_state` in `private_store`
