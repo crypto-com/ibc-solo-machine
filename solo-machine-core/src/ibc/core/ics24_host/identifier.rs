@@ -108,7 +108,10 @@ impl FromStr for ChainId {
 
         let version = if regex.is_match(&id) {
             let split = id.split('-').collect::<Vec<_>>();
-            split[1].parse().unwrap_or(0)
+            split
+                .last()
+                .map(|version| version.parse().unwrap_or(0))
+                .unwrap_or(0)
         } else {
             0
         };
