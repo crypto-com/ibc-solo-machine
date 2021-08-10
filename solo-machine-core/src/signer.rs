@@ -6,6 +6,7 @@ mod mnemonic;
 pub use mnemonic::{AddressAlgo, MnemonicSigner};
 
 use anyhow::Result;
+use async_trait::async_trait;
 
 use crate::cosmos::crypto::PublicKey;
 
@@ -36,13 +37,15 @@ impl<T: ToPublicKey> ToPublicKey for &T {
 }
 
 /// This trait must be implemented by all the transaction signers (e.g. mnemonic, ledger, etc.)
-pub trait Signer: ToPublicKey {
+#[async_trait]
+pub trait Signer: ToPublicKey + Send + Sync {
     /// Signs the given message
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>>;
+    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>>;
 }
 
+#[async_trait]
 impl<T: Signer> Signer for &T {
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
-        (*self).sign(message)
+    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
+        (*self).sign(message).await
     }
 }
