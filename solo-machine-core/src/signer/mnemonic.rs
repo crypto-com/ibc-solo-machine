@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::{anyhow, Context, Error, Result};
+use async_trait::async_trait;
 use bip32::{DerivationPath, ExtendedPrivateKey, Mnemonic};
 use k256::ecdsa::{signature::DigestSigner, Signature, SigningKey};
 use ripemd160::Digest;
@@ -76,8 +77,9 @@ impl ToPublicKey for MnemonicSigner {
     }
 }
 
+#[async_trait]
 impl Signer for MnemonicSigner {
-    fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
+    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
         let signing_key = self.get_signing_key()?;
 
         let signature: Signature = match self.algo {
