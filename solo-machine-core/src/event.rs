@@ -29,7 +29,7 @@ pub enum Event {
         amount: u32,
         /// Denom of tokens minted
         denom: Identifier,
-        /// Hash of transaction on IBC enabled chain
+        /// Hash of transaction on IBC enabled chain (in hex)
         transaction_hash: String,
     },
     /// Burnt tokens on IBC enabled chain
@@ -42,7 +42,7 @@ pub enum Event {
         amount: u32,
         /// Denom of tokens minted
         denom: Identifier,
-        /// Hash of transaction on IBC enabled chain
+        /// Hash of transaction on IBC enabled chain (in hex)
         transaction_hash: String,
     },
     /// Updated signer's public key on IBC enabled change for future messages from solo machine

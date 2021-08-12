@@ -26,7 +26,7 @@ pub struct Operation {
     pub amount: u32,
     /// Type of operation
     pub operation_type: OperationType,
-    /// On-chain transaction hash
+    /// On-chain transaction hash (in hex)
     pub transaction_hash: String,
     /// Time at which this operation was created
     pub created_at: DateTime<Utc>,
@@ -45,7 +45,7 @@ pub struct RawOperation {
     pub amount: u32,
     /// Type of operation
     pub operation_type: Json<OperationType>,
-    /// On-chain transaction hash
+    /// On-chain transaction hash (in hex)
     pub transaction_hash: String,
     /// Time at which this operation was created
     pub created_at: DateTime<Utc>,

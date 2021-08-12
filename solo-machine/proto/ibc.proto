@@ -96,7 +96,7 @@ message Operation {
     uint32 amount = 4;
     // Type of operation (e.g., mint, burn, send, receive)
     string operation_type = 5;
-    // On-chain transaction hash
+    // On-chain transaction hash (in hex)
     string transaction_hash = 6;
     // Time at which this operation was done
     google.protobuf.Timestamp created_at = 7;
