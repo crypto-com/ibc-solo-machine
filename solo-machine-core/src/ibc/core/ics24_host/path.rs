@@ -25,7 +25,7 @@ impl Path {
     pub fn apply_prefix(&mut self, prefix: &Identifier) {
         let path = format!(
             "/{}/{}",
-            urlencoding::encode(&prefix),
+            urlencoding::encode(prefix),
             urlencoding::encode(&self.0)
         );
 

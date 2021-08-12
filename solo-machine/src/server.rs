@@ -1,4 +1,3 @@
-mod bank;
 mod chain;
 mod ibc;
 
@@ -10,7 +9,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use tonic::transport::Server as GrpcServer;
 
 use self::{
-    bank::{bank_server::BankServer, BankService},
     chain::{chain_server::ChainServer, ChainService},
     ibc::{ibc_server::IbcServer, IbcService},
 };
@@ -22,13 +20,11 @@ pub async fn start_grpc(
     sender: UnboundedSender<Event>,
     addr: SocketAddr,
 ) -> Result<()> {
-    let bank_service = BankService::new(db_pool.clone(), sender.clone(), signer.clone());
     let chain_service = ChainService::new(db_pool.clone(), sender.clone(), signer.clone());
     let ibc_service = IbcService::new(db_pool, sender, signer);
 
     GrpcServer::builder()
         .timeout(Duration::from_secs(60))
-        .add_service(BankServer::new(bank_service))
         .add_service(ChainServer::new(chain_service))
         .add_service(IbcServer::new(ibc_service))
         .serve(addr)

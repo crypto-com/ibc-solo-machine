@@ -68,7 +68,7 @@ impl MultisigPublicKey {
                     .as_ref()
                     .ok_or_else(|| anyhow!("missing signature data"))?;
 
-                self.public_keys[i].verify_signature(message, &signature_data)?;
+                self.public_keys[i].verify_signature(message, signature_data)?;
 
                 signature_index += 1;
             }

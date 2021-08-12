@@ -55,10 +55,10 @@ impl Chain {
         let denom_trace = DenomTrace::new(
             &self.config.port_id,
             &connection_details.solo_machine_channel_id,
-            &denom,
+            denom,
         );
 
-        let hash = Sha256::digest(&denom_trace.to_string().as_bytes());
+        let hash = Sha256::digest(denom_trace.to_string().as_bytes());
 
         Some(format!("ibc/{}", hex::encode_upper(hash)))
     }

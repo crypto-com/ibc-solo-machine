@@ -19,31 +19,31 @@ pub use event_handler::*;
 #[allow(clippy::large_enum_variant)]
 pub enum Event {
     // ----- IBC events ----- //
-    /// Sent tokens from solo machine to IBC enabled chain
-    TokensSent {
+    /// Minted tokens on IBC enabled chain
+    TokensMinted {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
-        /// Address of account on solo machine
-        from_address: String,
         /// Address of account on IBC enabled chain
         to_address: String,
         /// Amount of tokens minted
         amount: u32,
         /// Denom of tokens minted
         denom: Identifier,
+        /// Hash of transaction on IBC enabled chain (in hex)
+        transaction_hash: String,
     },
-    /// Received tokens to solo machine from IBC enabled chain
-    TokensReceived {
+    /// Burnt tokens on IBC enabled chain
+    TokensBurnt {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Address of account on IBC enabled chain
         from_address: String,
-        /// Address of account on IBC solo machine
-        to_address: String,
         /// Amount of tokens minted
         amount: u32,
         /// Denom of tokens minted
         denom: Identifier,
+        /// Hash of transaction on IBC enabled chain (in hex)
+        transaction_hash: String,
     },
     /// Updated signer's public key on IBC enabled change for future messages from solo machine
     SignerUpdated {
@@ -119,26 +119,6 @@ pub enum Event {
     ChainAdded {
         /// Chain ID
         chain_id: ChainId,
-    },
-
-    // ----- Bank events ----- //
-    /// Minted new tokens on solo machine
-    TokensMinted {
-        /// Address of account
-        address: String,
-        /// Amount of tokens minted
-        amount: u32,
-        /// Denom of tokens minted
-        denom: Identifier,
-    },
-    /// Burnt tokens on solo machine
-    TokensBurnt {
-        /// Address of account
-        address: String,
-        /// Amount of tokens burnt
-        amount: u32,
-        /// Denom of tokens burnt
-        denom: Identifier,
     },
 }
 

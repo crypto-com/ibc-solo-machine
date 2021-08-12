@@ -1,15 +1,12 @@
 //! Data types used by solo machine
-pub(crate) mod bank;
 pub(crate) mod chain;
 pub(crate) mod ibc;
+pub(crate) mod operation;
 
 pub use self::{
-    bank::{
-        account::Account,
-        account_operation::{AccountOperation, OperationType},
-    },
     chain::{
         chain_keys::ChainKey,
         {Chain, ChainConfig, ConnectionDetails, Fee},
     },
+    operation::{Operation, OperationType},
 };

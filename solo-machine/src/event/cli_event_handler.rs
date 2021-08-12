@@ -24,48 +24,6 @@ impl EventHandler for CliEventHandler {
         let mut stdout = StandardStream::stdout(self.color_choice);
 
         match event {
-            Event::TokensMinted {
-                address,
-                amount,
-                denom,
-            } => {
-                print_stream(
-                    &mut stdout,
-                    ColorSpec::new().set_bold(true),
-                    "Tokens minted!",
-                )?;
-                writeln!(stdout)?;
-
-                let mut table = Vec::new();
-
-                add_row(&mut table, "Address", address);
-                add_row(&mut table, "Amount", amount);
-                add_row(&mut table, "Denom", denom);
-
-                print_stdout(table.table().color_choice(self.color_choice))
-                    .context("unable to print table to stdout")?;
-            }
-            Event::TokensBurnt {
-                address,
-                amount,
-                denom,
-            } => {
-                print_stream(
-                    &mut stdout,
-                    ColorSpec::new().set_bold(true),
-                    "Tokens burnt!",
-                )?;
-                writeln!(stdout)?;
-
-                let mut table = Vec::new();
-
-                add_row(&mut table, "Address", address);
-                add_row(&mut table, "Amount", amount);
-                add_row(&mut table, "Denom", denom);
-
-                print_stdout(table.table().color_choice(self.color_choice))
-                    .context("unable to print table to stdout")?;
-            }
             Event::ChainAdded { chain_id } => {
                 print_stream(
                     &mut stdout,
@@ -88,38 +46,42 @@ impl EventHandler for CliEventHandler {
 
                 print_stdout(table).context("unable to print table to stdout")?;
             }
-            Event::TokensSent {
+            Event::TokensMinted {
                 chain_id,
-                from_address,
                 to_address,
                 amount,
                 denom,
+                transaction_hash,
             } => {
-                print_stream(&mut stdout, ColorSpec::new().set_bold(true), "Tokens sent!")?;
+                print_stream(
+                    &mut stdout,
+                    ColorSpec::new().set_bold(true),
+                    "Tokens minted!",
+                )?;
                 writeln!(stdout)?;
 
                 let mut table = Vec::new();
 
                 add_row(&mut table, "Chain ID", chain_id);
-                add_row(&mut table, "From", from_address);
                 add_row(&mut table, "To", to_address);
                 add_row(&mut table, "Amount", amount);
                 add_row(&mut table, "Denom", denom);
+                add_row(&mut table, "Transaction Hash", transaction_hash);
 
                 print_stdout(table.table().color_choice(self.color_choice))
                     .context("unable to print table to stdout")?;
             }
-            Event::TokensReceived {
+            Event::TokensBurnt {
                 chain_id,
                 from_address,
-                to_address,
                 amount,
                 denom,
+                transaction_hash,
             } => {
                 print_stream(
                     &mut stdout,
                     ColorSpec::new().set_bold(true),
-                    "Tokens received!",
+                    "Tokens burnt!",
                 )?;
                 writeln!(stdout)?;
 
@@ -127,9 +89,9 @@ impl EventHandler for CliEventHandler {
 
                 add_row(&mut table, "Chain ID", chain_id);
                 add_row(&mut table, "From", from_address);
-                add_row(&mut table, "To", to_address);
                 add_row(&mut table, "Amount", amount);
                 add_row(&mut table, "Denom", denom);
+                add_row(&mut table, "Transaction Hash", transaction_hash);
 
                 print_stdout(table.table().color_choice(self.color_choice))
                     .context("unable to print table to stdout")?;

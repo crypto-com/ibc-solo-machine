@@ -10,5 +10,5 @@ crate-type = ["dylib"]
 
 [dependencies]
 anyhow = "1.0.42"
-async-trait = "0.1.50"
+async-trait = "0.1.51"
 solo-machine-core = { path = "../../solo-machine-core" }

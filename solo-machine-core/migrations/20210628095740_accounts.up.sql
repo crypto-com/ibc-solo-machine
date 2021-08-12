@@ -1,8 +1,0 @@
-CREATE TABLE accounts (
-    address TEXT NOT NULL,
-    denom TEXT NOT NULL,
-    balance INTEGER NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (address, denom)
-);
