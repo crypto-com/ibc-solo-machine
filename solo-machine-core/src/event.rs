@@ -23,6 +23,8 @@ pub enum Event {
     TokensMinted {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
+        /// Optional request ID (for tracking purposes)
+        request_id: Option<String>,
         /// Address of account on IBC enabled chain
         to_address: String,
         /// Amount of tokens minted
@@ -36,6 +38,8 @@ pub enum Event {
     TokensBurnt {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
+        /// Optional request ID (for tracking purposes)
+        request_id: Option<String>,
         /// Address of account on IBC enabled chain
         from_address: String,
         /// Amount of tokens minted
@@ -119,6 +123,13 @@ pub enum Event {
     ChainAdded {
         /// Chain ID
         chain_id: ChainId,
+    },
+
+    // ----- Other events ----- //
+    /// Warning
+    Warning {
+        /// Warning message
+        message: String,
     },
 }
 

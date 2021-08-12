@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS operations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT,
     address TEXT NOT NULL,
     denom TEXT NOT NULL,
     amount INTEGER NOT NULL,
