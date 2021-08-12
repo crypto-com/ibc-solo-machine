@@ -48,6 +48,7 @@ impl EventHandler for CliEventHandler {
             }
             Event::TokensMinted {
                 chain_id,
+                request_id,
                 to_address,
                 amount,
                 denom,
@@ -63,6 +64,11 @@ impl EventHandler for CliEventHandler {
                 let mut table = Vec::new();
 
                 add_row(&mut table, "Chain ID", chain_id);
+                add_row(
+                    &mut table,
+                    "Request ID",
+                    request_id.as_deref().unwrap_or("-"),
+                );
                 add_row(&mut table, "To", to_address);
                 add_row(&mut table, "Amount", amount);
                 add_row(&mut table, "Denom", denom);
@@ -73,6 +79,7 @@ impl EventHandler for CliEventHandler {
             }
             Event::TokensBurnt {
                 chain_id,
+                request_id,
                 from_address,
                 amount,
                 denom,
@@ -88,6 +95,11 @@ impl EventHandler for CliEventHandler {
                 let mut table = Vec::new();
 
                 add_row(&mut table, "Chain ID", chain_id);
+                add_row(
+                    &mut table,
+                    "Request ID",
+                    request_id.as_deref().unwrap_or("-"),
+                );
                 add_row(&mut table, "From", from_address);
                 add_row(&mut table, "Amount", amount);
                 add_row(&mut table, "Denom", denom);
@@ -258,6 +270,13 @@ impl EventHandler for CliEventHandler {
 
                 print_stdout(table.table().color_choice(self.color_choice))
                     .context("unable to print table to stdout")?;
+            }
+            Event::Warning { message } => {
+                print_stream(
+                    &mut stdout,
+                    ColorSpec::new().set_bold(true).set_fg(Some(Color::Yellow)),
+                    format!("WARNING: {}", message),
+                )?;
             }
         }
 

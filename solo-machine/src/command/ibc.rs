@@ -48,6 +48,9 @@ pub enum IbcCommand {
             hide_env_values = true
         )]
         memo: String,
+        /// Optional request ID (for tracking purposes)
+        #[structopt(long)]
+        request_id: Option<String>,
     },
     /// Burn some tokens on IBC enabled chain
     Burn {
@@ -67,6 +70,9 @@ pub enum IbcCommand {
             hide_env_values = true
         )]
         memo: String,
+        /// Optional request ID (for tracking purposes)
+        #[structopt(long)]
+        request_id: Option<String>,
     },
     /// Updates signer's public key on IBC enabled chain for future messages from solo machine
     UpdateSigner {
@@ -114,9 +120,10 @@ impl IbcCommand {
                 denom,
                 receiver,
                 memo,
+                request_id,
             } => {
                 ibc_service
-                    .mint(signer, chain_id, amount, denom, receiver, memo)
+                    .mint(signer, chain_id, request_id, amount, denom, receiver, memo)
                     .await
             }
             Self::Burn {
@@ -125,9 +132,10 @@ impl IbcCommand {
                 denom,
                 receiver,
                 memo,
+                request_id,
             } => {
                 ibc_service
-                    .burn(signer, chain_id, amount, denom, receiver, memo)
+                    .burn(signer, chain_id, request_id, amount, denom, receiver, memo)
                     .await
             }
             Self::UpdateSigner {
@@ -162,6 +170,7 @@ impl IbcCommand {
                     .table()
                     .title(vec![
                         "ID".cell().bold(true),
+                        "Request ID".cell().bold(true),
                         "Address".cell().bold(true),
                         "Denom".cell().bold(true),
                         "Amount".cell().bold(true),
@@ -182,6 +191,10 @@ fn into_row(operation: Operation) -> RowStruct {
 
     vec![
         operation.id.cell().justify(Justify::Right),
+        operation
+            .request_id
+            .unwrap_or_else(|| "-".to_string())
+            .cell(),
         operation.address.cell(),
         operation.denom.cell(),
         operation.amount.cell().justify(Justify::Right),

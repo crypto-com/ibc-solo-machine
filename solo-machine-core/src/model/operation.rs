@@ -18,6 +18,8 @@ use crate::{
 pub struct Operation {
     /// ID of operation
     pub id: i64,
+    /// Request ID for tracking purposes
+    pub request_id: Option<String>,
     /// Address of the account
     pub address: String,
     /// Denom of tokens
@@ -37,6 +39,8 @@ pub struct Operation {
 pub struct RawOperation {
     /// ID of operation
     pub id: i64,
+    // Request ID for tracking purposes
+    pub request_id: Option<String>,
     /// Address of the account
     pub address: String,
     /// Denom of tokens
@@ -55,6 +59,7 @@ impl From<Operation> for RawOperation {
     fn from(op: Operation) -> Self {
         Self {
             id: op.id,
+            request_id: op.request_id,
             address: op.address,
             denom: op.denom.to_string(),
             amount: op.amount,
@@ -71,6 +76,7 @@ impl TryFrom<RawOperation> for Operation {
     fn try_from(op: RawOperation) -> Result<Self, Self::Error> {
         Ok(Self {
             id: op.id,
+            request_id: op.request_id,
             address: op.address,
             denom: op.denom.parse()?,
             amount: op.amount,
@@ -108,6 +114,7 @@ impl fmt::Display for OperationType {
 /// Adds an account operation to database
 pub async fn add_operation<'e>(
     executor: impl Executor<'e, Database = Db>,
+    request_id: Option<&str>,
     address: &str,
     denom: &Identifier,
     amount: u32,
@@ -117,8 +124,9 @@ pub async fn add_operation<'e>(
     let operation_type = Json(operation_type);
 
     let rows_affected = sqlx::query(
-        "INSERT INTO operations (address, denom, amount, operation_type, transaction_hash) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO operations (request_id, address, denom, amount, operation_type, transaction_hash) VALUES ($1, $2, $3, $4, $5, $6)",
     )
+    .bind(request_id)
     .bind(address)
     .bind(denom.to_string())
     .bind(amount)

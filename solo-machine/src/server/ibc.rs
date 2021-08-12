@@ -65,6 +65,7 @@ where
             .chain_id
             .parse()
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
+        let request_id = request.request_id;
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
         let amount = request.amount;
         let denom = request
@@ -74,7 +75,15 @@ where
         let receiver = request.receiver_address;
 
         self.core_service
-            .mint(&self.signer, chain_id, amount, denom, receiver, memo)
+            .mint(
+                &self.signer,
+                chain_id,
+                request_id,
+                amount,
+                denom,
+                receiver,
+                memo,
+            )
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
@@ -88,6 +97,7 @@ where
             .chain_id
             .parse()
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
+        let request_id = request.request_id;
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
         let amount = request.amount;
         let denom = request
@@ -97,7 +107,15 @@ where
         let receiver = request.receiver_address;
 
         self.core_service
-            .burn(&self.signer, chain_id, amount, denom, receiver, memo)
+            .burn(
+                &self.signer,
+                chain_id,
+                request_id,
+                amount,
+                denom,
+                receiver,
+                memo,
+            )
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
@@ -164,6 +182,7 @@ where
                 .into_iter()
                 .map(|op| Operation {
                     id: op.id,
+                    request_id: op.request_id,
                     address: op.address,
                     denom: op.denom.to_string(),
                     amount: op.amount,

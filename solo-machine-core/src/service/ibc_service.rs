@@ -262,10 +262,12 @@ impl IbcService {
     }
 
     /// Mint some tokens on IBC enabled chain
+    #[allow(clippy::too_many_arguments)]
     pub async fn mint(
         &self,
         signer: impl Signer,
         chain_id: ChainId,
+        request_id: Option<String>,
         amount: u32,
         denom: Identifier,
         receiver: Option<String>,
@@ -320,7 +322,8 @@ impl IbcService {
         if success {
             operation::add_operation(
                 &self.db_pool,
-                &address,
+                request_id.as_deref(),
+                &receiver,
                 &denom,
                 amount,
                 &OperationType::Mint {
@@ -334,6 +337,7 @@ impl IbcService {
                 &self.notifier,
                 Event::TokensMinted {
                     chain_id,
+                    request_id,
                     to_address: receiver,
                     amount,
                     denom,
@@ -357,10 +361,12 @@ impl IbcService {
     }
 
     /// Burn some tokens on IBC enabled chain
+    #[allow(clippy::too_many_arguments)]
     pub async fn burn(
         &self,
         signer: impl Signer,
         chain_id: ChainId,
+        request_id: Option<String>,
         amount: u32,
         denom: Identifier,
         receiver: Option<String>,
@@ -420,6 +426,7 @@ impl IbcService {
 
         operation::add_operation(
             &self.db_pool,
+            request_id.as_deref(),
             &address,
             &denom,
             amount,
@@ -434,6 +441,7 @@ impl IbcService {
             &self.notifier,
             Event::TokensBurnt {
                 chain_id,
+                request_id,
                 from_address: address,
                 amount,
                 denom,
@@ -441,14 +449,25 @@ impl IbcService {
             },
         )?;
 
-        self.process_packets(
-            signer,
-            &rpc_client,
-            &mut chain,
-            extract_packets(&response)?,
-            memo,
-        )
-        .await?;
+        if let Err(e) = self
+            .process_packets(
+                signer,
+                &rpc_client,
+                &mut chain,
+                extract_packets(&response)?,
+                memo,
+            )
+            .await
+        {
+            // Create a warning instead of returning an error because IBC transfer is successful even if processing of
+            // packets (i.e., sending acks) fails
+            notify_event(
+                &self.notifier,
+                Event::Warning {
+                    message: e.to_string(),
+                },
+            )?;
+        }
 
         Ok(())
     }
