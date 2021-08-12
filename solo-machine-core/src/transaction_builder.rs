@@ -147,7 +147,7 @@ pub async fn msg_update_solo_machine_client<'e>(
 
     let signature = get_header_proof(
         &signer,
-        &chain,
+        chain,
         Some(any_public_key.clone()),
         chain.config.diversifier.clone(),
     )
@@ -178,7 +178,7 @@ pub async fn msg_update_solo_machine_client<'e>(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 /// Builds a transaction to create a tendermint client on IBC enabled solo machine
@@ -191,9 +191,9 @@ pub async fn msg_create_tendermint_client(
         denominator: *chain.config.trust_level.denom(),
     });
 
-    let unbonding_period = Some(get_unbonding_period(&chain).await?);
+    let unbonding_period = Some(get_unbonding_period(chain).await?);
     let latest_header = get_latest_header(instance)?;
-    let latest_height = get_block_height(&chain, &latest_header);
+    let latest_height = get_block_height(chain, &latest_header);
 
     let client_state = TendermintClientState {
         chain_id: chain.id.to_string(),
@@ -238,7 +238,7 @@ pub async fn msg_connection_open_init(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 pub async fn msg_connection_open_ack(
@@ -258,15 +258,15 @@ pub async fn msg_connection_open_ack(
     let proof_height = Height::new(0, chain.sequence.into());
 
     let proof_try =
-        get_connection_proof(&mut *transaction, &signer, &chain, tendermint_connection_id).await?;
+        get_connection_proof(&mut *transaction, &signer, chain, tendermint_connection_id).await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let proof_client =
-        get_client_proof(&mut *transaction, &signer, &chain, &tendermint_client_id).await?;
+        get_client_proof(&mut *transaction, &signer, chain, tendermint_client_id).await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let proof_consensus =
-        get_consensus_proof(&mut *transaction, &signer, &chain, &tendermint_client_id).await?;
+        get_consensus_proof(&mut *transaction, &signer, chain, tendermint_client_id).await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgConnectionOpenAck {
@@ -285,7 +285,7 @@ pub async fn msg_connection_open_ack(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 pub async fn msg_channel_open_init(
@@ -309,7 +309,7 @@ pub async fn msg_channel_open_init(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 pub async fn msg_channel_open_ack(
@@ -323,7 +323,7 @@ pub async fn msg_channel_open_ack(
     let proof_height = Height::new(0, chain.sequence.into());
 
     let proof_try =
-        get_channel_proof(&mut *transaction, &signer, &chain, tendermint_channel_id).await?;
+        get_channel_proof(&mut *transaction, &signer, chain, tendermint_channel_id).await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgChannelOpenAck {
@@ -336,7 +336,7 @@ pub async fn msg_channel_open_ack(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -377,7 +377,7 @@ where
         destination_channel: connection_details.solo_machine_channel_id.to_string(),
         data: serde_json::to_vec(&packet_data)?,
         timeout_height: Some(
-            get_latest_height(&chain, rpc_client)
+            get_latest_height(chain, rpc_client)
                 .await?
                 .checked_add(DEFAULT_TIMEOUT_HEIGHT_OFFSET)
                 .ok_or_else(|| anyhow!("height addition overflow"))?,
@@ -385,7 +385,7 @@ where
         timeout_timestamp: 0,
     };
 
-    let proof_commitment = get_packet_commitment_proof(&signer, &chain, &packet).await?;
+    let proof_commitment = get_packet_commitment_proof(&signer, chain, &packet).await?;
 
     let proof_height = Height::new(0, chain.sequence.into());
 
@@ -399,7 +399,7 @@ where
         signer: sender,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 pub async fn msg_token_receive(
@@ -439,7 +439,7 @@ pub async fn msg_token_receive(
         timeout_timestamp: 0,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 pub async fn msg_token_receive_ack<'e>(
@@ -453,7 +453,7 @@ pub async fn msg_token_receive_ack<'e>(
     let acknowledgement = serde_json::to_vec(&json!({ "result": [1] }))?;
 
     let proof_acked =
-        get_packet_acknowledgement_proof(&signer, &chain, acknowledgement.clone(), packet.sequence)
+        get_packet_acknowledgement_proof(&signer, chain, acknowledgement.clone(), packet.sequence)
             .await?;
 
     *chain = chain::increment_sequence(executor, &chain.id).await?;
@@ -466,7 +466,7 @@ pub async fn msg_token_receive_ack<'e>(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, &chain, &[message], memo).await
+    build(signer, chain, &[message], memo).await
 }
 
 async fn build<T>(signer: impl Signer, chain: &Chain, messages: &[T], memo: String) -> Result<TxRaw>
@@ -476,10 +476,10 @@ where
     let tx_body = build_tx_body(messages, memo).context("unable to build transaction body")?;
     let tx_body_bytes = proto_encode(&tx_body)?;
 
-    let (account_number, account_sequence) = get_account_details(&signer, &chain).await?;
+    let (account_number, account_sequence) = get_account_details(&signer, chain).await?;
 
     let auth_info =
-        build_auth_info(&signer, &chain, account_sequence).context("unable to build auth info")?;
+        build_auth_info(&signer, chain, account_sequence).context("unable to build auth info")?;
     let auth_info_bytes = proto_encode(&auth_info)?;
 
     let signature = build_signature(

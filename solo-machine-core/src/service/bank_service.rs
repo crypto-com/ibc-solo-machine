@@ -149,17 +149,17 @@ pub async fn add_tokens(
         "incorrect operation type when adding tokens"
     );
 
-    account_operation::add_operation(&mut *transaction, &address, denom, amount, &operation_type)
+    account_operation::add_operation(&mut *transaction, address, denom, amount, operation_type)
         .await?;
 
-    let account_exists = account::get_account(&mut *transaction, &address, denom)
+    let account_exists = account::get_account(&mut *transaction, address, denom)
         .await?
         .is_some();
 
     if account_exists {
-        account::add_balance(&mut *transaction, &address, denom, amount).await?;
+        account::add_balance(&mut *transaction, address, denom, amount).await?;
     } else {
-        account::add_account(&mut *transaction, &address, denom, amount).await?;
+        account::add_account(&mut *transaction, address, denom, amount).await?;
     }
 
     Ok(())
@@ -178,15 +178,15 @@ pub async fn remove_tokens(
         "incorrect operation type when removing tokens"
     );
 
-    account_operation::add_operation(&mut *transaction, &address, denom, amount, operation_type)
+    account_operation::add_operation(&mut *transaction, address, denom, amount, operation_type)
         .await?;
 
-    let account = account::get_account(&mut *transaction, &address, denom)
+    let account = account::get_account(&mut *transaction, address, denom)
         .await?
         .context("account does not exist")?;
 
     ensure!(account.balance >= amount, "insufficient balance");
-    account::subtract_balance(transaction, &address, denom, amount).await?;
+    account::subtract_balance(transaction, address, denom, amount).await?;
 
     Ok(())
 }
