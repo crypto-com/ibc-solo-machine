@@ -1,19 +1,16 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::collections::HashMap;
 
 use anyhow::{anyhow, ensure, Context, Result};
-use cosmos_sdk_proto::ibc::{
-    applications::transfer::v1::FungibleTokenPacketData,
-    core::{
-        channel::v1::{
-            Channel, Counterparty as ChannelCounterparty, Order as ChannelOrder, Packet,
-            State as ChannelState,
-        },
-        client::v1::Height,
-        commitment::v1::MerklePrefix,
-        connection::v1::{
-            ConnectionEnd, Counterparty as ConnectionCounterparty, State as ConnectionState,
-            Version as ConnectionVersion,
-        },
+use cosmos_sdk_proto::ibc::core::{
+    channel::v1::{
+        Channel, Counterparty as ChannelCounterparty, Order as ChannelOrder, Packet,
+        State as ChannelState,
+    },
+    client::v1::Height,
+    commitment::v1::MerklePrefix,
+    connection::v1::{
+        ConnectionEnd, Counterparty as ConnectionCounterparty, State as ConnectionState,
+        Version as ConnectionVersion,
     },
 };
 use sqlx::{Executor, Transaction};
@@ -43,11 +40,12 @@ use crate::{
     },
     model::{
         chain::{self, chain_keys},
-        ibc as ibc_handler, Chain, ConnectionDetails as ChainConnectionDetails, OperationType,
+        ibc as ibc_handler,
+        operation::{self, Operation},
+        Chain, ConnectionDetails as ChainConnectionDetails, OperationType,
     },
     proto::proto_encode,
-    service::bank_service,
-    transaction_builder, Db, DbPool, Signer,
+    transaction_builder, Db, DbPool, Signer, ToPublicKey,
 };
 
 /// Used to connect, send tokens and receive tokens over IBC
@@ -263,8 +261,8 @@ impl IbcService {
             .context("unable to commit transaction for creating ibc connection")
     }
 
-    /// Sends some tokens to IBC enabled chain
-    pub async fn send_to_chain(
+    /// Mint some tokens on IBC enabled chain
+    pub async fn mint(
         &self,
         signer: impl Signer,
         chain_id: ChainId,
@@ -273,32 +271,21 @@ impl IbcService {
         receiver: Option<String>,
         memo: String,
     ) -> Result<()> {
-        let mut transaction = self
-            .db_pool
-            .begin()
-            .await
-            .context("unable to begin database transaction")?;
-
-        let mut chain = chain::get_chain(&mut transaction, &chain_id)
+        let mut chain = chain::get_chain(&self.db_pool, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
         let address = signer.to_account_address()?;
         let receiver = receiver.unwrap_or_else(|| address.clone());
 
-        bank_service::remove_tokens(
-            &mut transaction,
-            &address,
-            amount,
-            &denom,
-            &OperationType::Send {
-                chain_id: chain_id.clone(),
-            },
-        )
-        .await?;
-
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
             .context("unable to connect to rpc client")?;
+
+        let mut transaction = self
+            .db_pool
+            .begin()
+            .await
+            .context("unable to begin database transaction")?;
 
         let msg = transaction_builder::msg_token_send(
             &mut transaction,
@@ -316,27 +303,61 @@ impl IbcService {
             .broadcast_tx_commit(proto_encode(&msg)?.into())
             .await?;
 
-        ensure_response_success(&response)?;
-
         transaction
             .commit()
             .await
             .context("unable to commit transaction for sending tokens over IBC")?;
 
-        notify_event(
-            &self.notifier,
-            Event::TokensSent {
-                chain_id,
-                from_address: address,
-                to_address: receiver,
+        let transaction_hash = ensure_response_success(&response)?;
+
+        let success: bool = extract_attribute(
+            &response.deliver_tx.events,
+            "fungible_token_packet",
+            "success",
+        )?
+        .parse()?;
+
+        if success {
+            operation::add_operation(
+                &self.db_pool,
+                &address,
+                &denom,
                 amount,
-                denom,
-            },
-        )
+                &OperationType::Mint {
+                    chain_id: chain_id.clone(),
+                },
+                &transaction_hash,
+            )
+            .await?;
+
+            notify_event(
+                &self.notifier,
+                Event::TokensMinted {
+                    chain_id,
+                    to_address: receiver,
+                    amount,
+                    denom,
+                    transaction_hash,
+                },
+            )?;
+
+            Ok(())
+        } else {
+            let error = extract_attribute(
+                &response.deliver_tx.events,
+                "write_acknowledgement",
+                "packet_ack",
+            )?;
+
+            Err(anyhow!(
+                "Failed to mint tokens on IBC enabled chain: {}",
+                error
+            ))
+        }
     }
 
-    /// Receives some tokens from IBC enabled chain
-    pub async fn receive_from_chain(
+    /// Burn some tokens on IBC enabled chain
+    pub async fn burn(
         &self,
         signer: impl Signer,
         chain_id: ChainId,
@@ -345,18 +366,18 @@ impl IbcService {
         receiver: Option<String>,
         memo: String,
     ) -> Result<()> {
-        let mut transaction = self
-            .db_pool
-            .begin()
-            .await
-            .context("unable to begin database transaction")?;
-
-        let mut chain = chain::get_chain(&mut transaction, &chain_id)
+        let mut chain = chain::get_chain(&self.db_pool, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
             .context("unable to connect to rpc client")?;
+
+        let mut transaction = self
+            .db_pool
+            .begin()
+            .await
+            .context("unable to begin database transaction")?;
 
         let msg = transaction_builder::msg_update_solo_machine_client(
             &mut transaction,
@@ -370,6 +391,11 @@ impl IbcService {
         let response = rpc_client
             .broadcast_tx_commit(proto_encode(&msg)?.into())
             .await?;
+
+        transaction
+            .commit()
+            .await
+            .context("unable to commit transaction for receiving tokens over IBC")?;
 
         ensure_response_success(&response)?;
 
@@ -390,10 +416,32 @@ impl IbcService {
             .broadcast_tx_commit(proto_encode(&msg)?.into())
             .await?;
 
-        ensure_response_success(&response)?;
+        let transaction_hash = ensure_response_success(&response)?;
 
-        process_packets(
-            &mut transaction,
+        operation::add_operation(
+            &self.db_pool,
+            &address,
+            &denom,
+            amount,
+            &OperationType::Burn {
+                chain_id: chain_id.clone(),
+            },
+            &transaction_hash,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::TokensBurnt {
+                chain_id,
+                from_address: address,
+                amount,
+                denom,
+                transaction_hash,
+            },
+        )?;
+
+        self.process_packets(
             signer,
             &rpc_client,
             &mut chain,
@@ -402,21 +450,7 @@ impl IbcService {
         )
         .await?;
 
-        transaction
-            .commit()
-            .await
-            .context("unable to commit transaction for receiving tokens over IBC")?;
-
-        notify_event(
-            &self.notifier,
-            Event::TokensReceived {
-                chain_id,
-                from_address: address,
-                to_address: receiver,
-                amount,
-                denom,
-            },
-        )
+        Ok(())
     }
 
     /// Updates signer for future IBC transactions
@@ -470,6 +504,83 @@ impl IbcService {
                 new_public_key,
             },
         )
+    }
+
+    /// Fetches history of all operations
+    pub async fn history(
+        &self,
+        signer: impl ToPublicKey,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Operation>> {
+        let account_address = signer.to_account_address()?;
+        operation::get_operations(&self.db_pool, &account_address, limit, offset).await
+    }
+
+    async fn process_packets<C>(
+        &self,
+        signer: impl Signer,
+        rpc_client: &C,
+        chain: &mut Chain,
+        packets: Vec<Packet>,
+        memo: String,
+    ) -> Result<()>
+    where
+        C: Client + Send + Sync,
+    {
+        let connection_details = chain.connection_details.clone().ok_or_else(|| {
+            anyhow!(
+                "connection details for chain with id {} are missing",
+                chain.id
+            )
+        })?;
+
+        for packet in packets {
+            ensure!(
+                chain.config.port_id.to_string() == packet.source_port,
+                "invalid source port id"
+            );
+            ensure!(
+                connection_details.solo_machine_channel_id.to_string() == packet.source_channel,
+                "invalid source channel id"
+            );
+            ensure!(
+                chain.config.port_id.to_string() == packet.destination_port,
+                "invalid destination port id"
+            );
+            ensure!(
+                connection_details.tendermint_channel_id.to_string() == packet.destination_channel,
+                "invalid destination channel id"
+            );
+
+            let mut transaction = self
+                .db_pool
+                .begin()
+                .await
+                .context("unable to begin database transaction")?;
+
+            let msg = transaction_builder::msg_token_receive_ack(
+                &mut *transaction,
+                &signer,
+                &mut *chain,
+                packet,
+                memo.clone(),
+            )
+            .await?;
+
+            let response = rpc_client
+                .broadcast_tx_commit(proto_encode(&msg)?.into())
+                .await?;
+
+            transaction
+                .commit()
+                .await
+                .context("unable to commit transaction for processing IBC packets")?;
+
+            ensure_response_success(&response)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -731,82 +842,6 @@ async fn channel_open_confirm(
     ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await
 }
 
-async fn process_packets<C>(
-    transaction: &mut Transaction<'_, Db>,
-    signer: impl Signer,
-    rpc_client: &C,
-    chain: &mut Chain,
-    packets: Vec<Packet>,
-    memo: String,
-) -> Result<()>
-where
-    C: Client + Send + Sync,
-{
-    let connection_details = chain.connection_details.clone().ok_or_else(|| {
-        anyhow!(
-            "connection details for chain with id {} are missing",
-            chain.id
-        )
-    })?;
-
-    for packet in packets {
-        ensure!(
-            chain.config.port_id.to_string() == packet.source_port,
-            "invalid source port id"
-        );
-        ensure!(
-            connection_details.solo_machine_channel_id.to_string() == packet.source_channel,
-            "invalid source channel id"
-        );
-        ensure!(
-            chain.config.port_id.to_string() == packet.destination_port,
-            "invalid destination port id"
-        );
-        ensure!(
-            connection_details.tendermint_channel_id.to_string() == packet.destination_channel,
-            "invalid destination channel id"
-        );
-
-        let packet_data = parse_packet_data(&packet.data)?;
-
-        let msg = transaction_builder::msg_token_receive_ack(
-            &mut *transaction,
-            &signer,
-            &mut *chain,
-            packet,
-            memo.clone(),
-        )
-        .await?;
-
-        let response = rpc_client
-            .broadcast_tx_commit(proto_encode(&msg)?.into())
-            .await?;
-
-        ensure_response_success(&response)?;
-
-        bank_service::add_tokens(
-            &mut *transaction,
-            &packet_data.receiver,
-            packet_data
-                .amount
-                .try_into()
-                .context("amount in packet is too big")?,
-            &packet_data
-                .denom
-                .split('/')
-                .last()
-                .ok_or_else(|| anyhow!("unable to parse denom in packet data"))?
-                .parse()?,
-            &OperationType::Receive {
-                chain_id: chain.id.clone(),
-            },
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
 fn prepare_light_client(
     chain: &Chain,
     rpc_client: HttpClient,
@@ -834,30 +869,6 @@ fn prepare_light_client(
     )?;
 
     Ok(builder.build())
-}
-
-fn parse_packet_data(packet_data: &[u8]) -> Result<FungibleTokenPacketData> {
-    let mut packet_data: HashMap<String, String> =
-        serde_json::from_slice(packet_data).context("invalid packet data")?;
-
-    let data = FungibleTokenPacketData {
-        denom: packet_data
-            .remove("denom")
-            .ok_or_else(|| anyhow!("`denom` is missing in packet data"))?,
-        amount: packet_data
-            .remove("amount")
-            .ok_or_else(|| anyhow!("`amount` is missing in packet data"))?
-            .parse()
-            .context("invalid amount in packet data")?,
-        receiver: packet_data
-            .remove("receiver")
-            .ok_or_else(|| anyhow!("`receiver` is missing in packet data"))?,
-        sender: packet_data
-            .remove("sender")
-            .ok_or_else(|| anyhow!("`sender` is missing in packet data"))?,
-    };
-
-    Ok(data)
 }
 
 fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
@@ -915,7 +926,7 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
     Ok(packets)
 }
 
-fn ensure_response_success(response: &TxCommitResponse) -> Result<()> {
+fn ensure_response_success(response: &TxCommitResponse) -> Result<String> {
     ensure!(
         response.check_tx.code.is_ok(),
         "check_tx response contains error code: {}",
@@ -928,7 +939,7 @@ fn ensure_response_success(response: &TxCommitResponse) -> Result<()> {
         response.deliver_tx.log
     );
 
-    Ok(())
+    Ok(response.hash.to_string())
 }
 
 fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Result<String> {

@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
+use cli_table::{
+    format::Justify, print_stdout, Cell, Color, ColorChoice, Row, RowStruct, Style, Table,
+};
 use k256::ecdsa::VerifyingKey;
 use solo_machine_core::{
     cosmos::crypto::{PublicKey, PublicKeyAlgo},
     ibc::core::ics24_host::identifier::{ChainId, Identifier},
+    model::{Operation, OperationType},
     service::IbcService,
     DbPool, Event, Signer,
 };
@@ -26,8 +30,8 @@ pub enum IbcCommand {
         )]
         memo: String,
     },
-    /// Sends some tokens to IBC enabled chain
-    Send {
+    /// Mint some tokens on IBC enabled chain
+    Mint {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to send to IBC enabled chain
@@ -45,8 +49,8 @@ pub enum IbcCommand {
         )]
         memo: String,
     },
-    /// Receives some tokens from IBC enabled chain
-    Receive {
+    /// Burn some tokens on IBC enabled chain
+    Burn {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to receive from IBC enabled chain
@@ -83,6 +87,13 @@ pub enum IbcCommand {
         )]
         memo: String,
     },
+    /// Check history of operations on solo machine
+    History {
+        #[structopt(long, default_value = "10")]
+        limit: u32,
+        #[structopt(long, default_value)]
+        offset: u32,
+    },
 }
 
 impl IbcCommand {
@@ -91,12 +102,13 @@ impl IbcCommand {
         db_pool: DbPool,
         signer: impl Signer,
         sender: UnboundedSender<Event>,
+        color_choice: ColorChoice,
     ) -> Result<()> {
         let ibc_service = IbcService::new_with_notifier(db_pool, sender);
 
         match self {
             Self::Connect { chain_id, memo } => ibc_service.connect(signer, chain_id, memo).await,
-            Self::Send {
+            Self::Mint {
                 chain_id,
                 amount,
                 denom,
@@ -104,10 +116,10 @@ impl IbcCommand {
                 memo,
             } => {
                 ibc_service
-                    .send_to_chain(signer, chain_id, amount, denom, receiver, memo)
+                    .mint(signer, chain_id, amount, denom, receiver, memo)
                     .await
             }
-            Self::Receive {
+            Self::Burn {
                 chain_id,
                 amount,
                 denom,
@@ -115,7 +127,7 @@ impl IbcCommand {
                 memo,
             } => {
                 ibc_service
-                    .receive_from_chain(signer, chain_id, amount, denom, receiver, memo)
+                    .burn(signer, chain_id, amount, denom, receiver, memo)
                     .await
             }
             Self::UpdateSigner {
@@ -140,6 +152,52 @@ impl IbcCommand {
                     .update_signer(signer, chain_id, new_public_key, memo)
                     .await
             }
+            Self::History { limit, offset } => {
+                let history = ibc_service.history(signer, limit, offset).await?;
+
+                let table = history
+                    .into_iter()
+                    .map(into_row)
+                    .collect::<Vec<RowStruct>>()
+                    .table()
+                    .title(vec![
+                        "ID".cell().bold(true),
+                        "Address".cell().bold(true),
+                        "Denom".cell().bold(true),
+                        "Amount".cell().bold(true),
+                        "Type".cell().bold(true),
+                        "Transaction Hash".cell().bold(true),
+                        "Time".cell().bold(true),
+                    ])
+                    .color_choice(color_choice);
+
+                print_stdout(table).context("unable to print table to stdout")
+            }
         }
+    }
+}
+
+fn into_row(operation: Operation) -> RowStruct {
+    let color = get_color_for_operation_type(&operation.operation_type);
+
+    vec![
+        operation.id.cell().justify(Justify::Right),
+        operation.address.cell(),
+        operation.denom.cell(),
+        operation.amount.cell().justify(Justify::Right),
+        operation
+            .operation_type
+            .cell()
+            .foreground_color(Some(color)),
+        operation.transaction_hash.cell(),
+        operation.created_at.cell(),
+    ]
+    .row()
+}
+
+fn get_color_for_operation_type(operation_type: &OperationType) -> Color {
+    match operation_type {
+        OperationType::Mint { .. } => Color::Green,
+        OperationType::Burn { .. } => Color::Red,
     }
 }

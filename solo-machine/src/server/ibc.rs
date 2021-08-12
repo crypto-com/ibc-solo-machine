@@ -1,5 +1,7 @@
 tonic::include_proto!("ibc");
 
+use std::time::SystemTime;
+
 use k256::ecdsa::VerifyingKey;
 use solo_machine_core::{
     cosmos::crypto::{PublicKey, PublicKeyAlgo},
@@ -56,10 +58,7 @@ where
         Ok(Response::new(ConnectResponse {}))
     }
 
-    async fn send_to_chain(
-        &self,
-        request: Request<SendToChainRequest>,
-    ) -> Result<Response<SendToChainResponse>, Status> {
+    async fn mint(&self, request: Request<MintRequest>) -> Result<Response<MintResponse>, Status> {
         let request = request.into_inner();
 
         let chain_id = request
@@ -75,17 +74,14 @@ where
         let receiver = request.receiver_address;
 
         self.core_service
-            .send_to_chain(&self.signer, chain_id, amount, denom, receiver, memo)
+            .mint(&self.signer, chain_id, amount, denom, receiver, memo)
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        Ok(Response::new(SendToChainResponse {}))
+        Ok(Response::new(MintResponse {}))
     }
 
-    async fn receive_from_chain(
-        &self,
-        request: Request<ReceiveFromChainRequest>,
-    ) -> Result<Response<ReceiveFromChainResponse>, Status> {
+    async fn burn(&self, request: Request<BurnRequest>) -> Result<Response<BurnResponse>, Status> {
         let request = request.into_inner();
 
         let chain_id = request
@@ -101,11 +97,11 @@ where
         let receiver = request.receiver_address;
 
         self.core_service
-            .receive_from_chain(&self.signer, chain_id, amount, denom, receiver, memo)
+            .burn(&self.signer, chain_id, amount, denom, receiver, memo)
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        Ok(Response::new(ReceiveFromChainResponse {}))
+        Ok(Response::new(BurnResponse {}))
     }
 
     async fn update_signer(
@@ -146,5 +142,38 @@ where
             .map_err(|err| Status::internal(err.to_string()))?;
 
         Ok(Response::new(UpdateSignerResponse {}))
+    }
+
+    async fn query_history(
+        &self,
+        request: Request<QueryHistoryRequest>,
+    ) -> Result<Response<QueryHistoryResponse>, Status> {
+        let request = request.into_inner();
+
+        let limit = request.limit.unwrap_or(10);
+        let offset = request.offset.unwrap_or(0);
+
+        let history = self
+            .core_service
+            .history(&self.signer, limit, offset)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        let response = QueryHistoryResponse {
+            operations: history
+                .into_iter()
+                .map(|op| Operation {
+                    id: op.id,
+                    address: op.address,
+                    denom: op.denom.to_string(),
+                    amount: op.amount,
+                    operation_type: op.operation_type.to_string(),
+                    transaction_hash: op.transaction_hash,
+                    created_at: Some(SystemTime::from(op.created_at).into()),
+                })
+                .collect(),
+        };
+
+        Ok(Response::new(response))
     }
 }

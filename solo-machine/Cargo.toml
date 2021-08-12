@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.42"
-async-trait = "0.1.50"
+async-trait = "0.1.51"
 bip32 = { version = "0.2.1", features = ["bip39"] }
 cli-table = { version = "0.4.6", default-features = false, features = [
     "derive",
@@ -21,9 +21,10 @@ libloading = "0.7.0"
 num-rational = "0.4.0"
 prost = "0.7.0"
 prost-types = "0.7.0"
-rust_decimal = "1.14.3"
+rust_decimal = "1.15.0"
 solo-machine-core = { path = "../solo-machine-core", features = [
     "mnemonic-signer",
+    "solomachine-v2",
 ] }
 structopt = "0.3.22"
 tendermint = "0.21.0"
@@ -34,7 +35,6 @@ tonic = "0.4.3"
 [features]
 default = []
 ethermint = ["solo-machine-core/ethermint"]
-solomachine-v2 = ["solo-machine-core/solomachine-v2"]
 
 [build-dependencies]
 prost-build = "0.7.0"

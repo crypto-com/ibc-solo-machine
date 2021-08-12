@@ -1,19 +1,24 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package ibc;
 
 service Ibc {
     // Attempts to establish a connection to an IBC enabled chain
     rpc Connect (ConnectRequest) returns (ConnectResponse);
 
-    // Sends tokens from solo machine to IBC enabled chain
-    rpc SendToChain (SendToChainRequest) returns (SendToChainResponse);
+    // Mint tokens on IBC enabled chain
+    rpc Mint (MintRequest) returns (MintResponse);
 
-    // Receives tokens from IBC enabled chain to solo machine
-    rpc ReceiveFromChain (ReceiveFromChainRequest) returns (ReceiveFromChainResponse);
+    // Burn tokens on IBC enabled chain
+    rpc Burn (BurnRequest) returns (BurnResponse);
 
     // Updates signer's public key on IBC enabled chain for future messages from solo machine
     rpc UpdateSigner (UpdateSignerRequest) returns (UpdateSignerResponse);
+
+    // Query account history
+    rpc QueryHistory (QueryHistoryRequest) returns (QueryHistoryResponse);
 }
 
 message ConnectRequest {
@@ -25,7 +30,7 @@ message ConnectRequest {
 
 message ConnectResponse {}
 
-message SendToChainRequest {
+message MintRequest {
     // Chain ID of IBC enabled chain to send to
     string chain_id = 1;
     // Memo value to be used in cosmos sdk transaction
@@ -38,9 +43,9 @@ message SendToChainRequest {
     optional string receiver_address = 5;
 }
 
-message SendToChainResponse {}
+message MintResponse {}
 
-message ReceiveFromChainRequest {
+message BurnRequest {
     // Chain ID of IBC enabled chain to send to
     string chain_id = 1;
     // Memo value to be used in cosmos sdk transaction
@@ -53,7 +58,7 @@ message ReceiveFromChainRequest {
     optional string receiver_address = 5;
 }
 
-message ReceiveFromChainResponse {}
+message BurnResponse {}
 
 message UpdateSignerRequest {
     // Chain ID of IBC enabled chain
@@ -67,3 +72,32 @@ message UpdateSignerRequest {
 }
 
 message UpdateSignerResponse {}
+
+message QueryHistoryRequest {
+    // Number of entries to query
+    optional uint32 limit = 1;
+    // Query offset
+    optional uint32 offset = 2;
+}
+
+message QueryHistoryResponse {
+    // List of operations performed
+    repeated Operation operations = 1;
+}
+
+message Operation {
+    // ID of operation
+    int64 id = 1;
+    // Account address
+    string address = 2;
+    // Denom of account
+    string denom = 3;
+    // Amount associated with operation
+    uint32 amount = 4;
+    // Type of operation (e.g., mint, burn, send, receive)
+    string operation_type = 5;
+    // On-chain transaction hash
+    string transaction_hash = 6;
+    // Time at which this operation was done
+    google.protobuf.Timestamp created_at = 7;
+}

@@ -1,4 +1,3 @@
-mod bank;
 mod chain;
 mod ibc;
 
@@ -26,7 +25,7 @@ use crate::{
     server::start_grpc,
 };
 
-use self::{bank::BankCommand, chain::ChainCommand, ibc::IbcCommand};
+use self::{chain::ChainCommand, ibc::IbcCommand};
 
 const ADDRESS_ALGO_VARIANTS: [&str; 2] = ["secp256k1", "eth-secp256k1"];
 
@@ -71,8 +70,6 @@ pub struct Command {
 #[derive(Debug, StructOpt)]
 #[allow(clippy::large_enum_variant)]
 pub enum SubCommand {
-    /// Bank operations (e.g. mint, burn, check balance, etc.)
-    Bank(BankSubCommand),
     /// Chain operations (managing chain state and metadata)
     Chain(ChainSubCommand),
     /// Generate completion scripts for solo-machine-cli
@@ -80,7 +77,7 @@ pub enum SubCommand {
         #[structopt(long, default_value = "bash")]
         shell: Shell,
     },
-    /// Used to connect, send tokens and receive tokens over IBC
+    /// Used to connect, mint tokens and burn tokens on IBC enabled chain
     Ibc(IbcSubCommand),
     /// Initializes database for solo machine
     Init,
@@ -90,12 +87,6 @@ pub enum SubCommand {
         #[structopt(short, long, env = "SOLO_GRPC_ADDR", default_value = "0.0.0.0:9000")]
         addr: SocketAddr,
     },
-}
-
-#[derive(Debug, StructOpt)]
-pub struct BankSubCommand {
-    #[structopt(subcommand)]
-    subcommand: BankCommand,
 }
 
 #[derive(Debug, StructOpt)]
@@ -119,33 +110,6 @@ impl Command {
         };
 
         match self.subcommand {
-            SubCommand::Bank(bank) => {
-                ensure!(
-                    self.account_prefix.is_some(),
-                    "`account-prefix` is required for bank commands"
-                );
-                ensure!(self.db_path.is_some(), "`db-path` is required");
-
-                let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(
-                    self.mnemonic,
-                    self.hd_path,
-                    self.account_prefix.unwrap(),
-                    self.address_algo,
-                )?;
-
-                let mut registrar = Registrar::try_from(self.handler)?;
-                registrar.register(Box::new(CliEventHandler::new(color_choice)));
-                let (sender, handle) = registrar.spawn();
-
-                bank.subcommand
-                    .execute(db_pool, signer, sender, color_choice)
-                    .await?;
-
-                handle
-                    .await
-                    .context("unable to join event hook registrar task")?
-            }
             SubCommand::Chain(chain) => {
                 ensure!(
                     self.account_prefix.is_some(),
@@ -197,7 +161,9 @@ impl Command {
                 registrar.register(Box::new(CliEventHandler::new(color_choice)));
                 let (sender, handle) = registrar.spawn();
 
-                ibc.subcommand.execute(db_pool, signer, sender).await?;
+                ibc.subcommand
+                    .execute(db_pool, signer, sender, color_choice)
+                    .await?;
 
                 handle
                     .await
