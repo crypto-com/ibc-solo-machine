@@ -84,7 +84,7 @@ impl TryFrom<Vec<PathBuf>> for Registrar {
     type Error = Error;
 
     fn try_from(files: Vec<PathBuf>) -> Result<Self, Self::Error> {
-        let mut registrar = Registrar::default();
+        let mut registrar = Self::default();
 
         for file in files.iter() {
             registrar.register_handler(file)?;

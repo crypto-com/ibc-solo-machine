@@ -5,6 +5,7 @@ use structopt::StructOpt;
 mod command;
 mod event;
 mod server;
+mod signer;
 
 #[tokio::main]
 async fn main() -> Result<()> {

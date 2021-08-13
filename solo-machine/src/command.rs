@@ -7,27 +7,22 @@ use std::{
     io::{stdout, Write},
     net::SocketAddr,
     path::PathBuf,
+    sync::Arc,
 };
 
-use anyhow::{anyhow, ensure, Context, Result};
-use bip32::{Language, Mnemonic};
+use anyhow::{ensure, Context, Result};
 use cli_table::{Cell, Row, RowStruct, Style};
-use solo_machine_core::{
-    event::HandlerRegistrar,
-    signer::{AddressAlgo, MnemonicSigner},
-    DbPool, Signer, MIGRATOR,
-};
+use solo_machine_core::{event::HandlerRegistrar, DbPool, MIGRATOR};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::{
     event::{cli_event_handler::CliEventHandler, Registrar},
     server::start_grpc,
+    signer::SignerRegistrar,
 };
 
 use self::{chain::ChainCommand, ibc::IbcCommand};
-
-const ADDRESS_ALGO_VARIANTS: [&str; 2] = ["secp256k1", "eth-secp256k1"];
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -41,23 +36,9 @@ pub struct Command {
     /// Database connection string
     #[structopt(long, env = "SOLO_DB_PATH", hide_env_values = true)]
     db_path: Option<String>,
-    /// Prefix for bech32 addresses used on solo machine
-    #[structopt(long, env = "SOLO_ACCOUNT_PREFIX", hide_env_values = true)]
-    account_prefix: Option<String>,
-    /// Mnemonic phrase for account on IBC enabled chain
-    #[structopt(long, env = "SOLO_MNEMONIC", hide_env_values = true)]
-    mnemonic: Option<String>,
-    /// Algoritm to use for generating addresses
-    #[structopt(long, possible_values = &ADDRESS_ALGO_VARIANTS, default_value = "secp256k1", env = "SOLO_ADDRESS_ALGO", hide_env_values = true)]
-    address_algo: AddressAlgo,
-    /// HD wallet path to be used when deriving public key from mnemonic
-    #[structopt(
-        long,
-        default_value = "m/44'/118'/0'/0/0",
-        env = "SOLO_HD_PATH",
-        hide_env_values = true
-    )]
-    hd_path: String,
+    /// Register a signer (path to signer's `*.so` file)
+    #[structopt(long, env = "SOLO_SIGNER", hide_env_values = true)]
+    signer: Option<PathBuf>,
     /// Register an event handler. Multiple event handlers can be registered and they're executed in order they're
     /// provided in CLI. Also, if an event handler returns an error when handling a message, all the future event
     /// handlers will not get executed.
@@ -112,18 +93,12 @@ impl Command {
         match self.subcommand {
             SubCommand::Chain(chain) => {
                 ensure!(
-                    self.account_prefix.is_some(),
-                    "`account-prefix` is required for chain commands"
+                    self.signer.is_some(),
+                    "`signer` is required for chain commands"
                 );
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(
-                    self.mnemonic,
-                    self.hd_path,
-                    self.account_prefix.unwrap(),
-                    self.address_algo,
-                )?;
 
                 let mut registrar = Registrar::try_from(self.handler)?;
                 registrar.register(Box::new(CliEventHandler::new(color_choice)));
@@ -131,7 +106,12 @@ impl Command {
 
                 chain
                     .subcommand
-                    .execute(db_pool, signer, sender, color_choice)
+                    .execute(
+                        db_pool,
+                        SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?,
+                        sender,
+                        color_choice,
+                    )
                     .await?;
 
                 handle
@@ -144,25 +124,24 @@ impl Command {
             }
             SubCommand::Ibc(ibc) => {
                 ensure!(
-                    self.account_prefix.is_some(),
-                    "`account-prefix` is required for ibc commands"
+                    self.signer.is_some(),
+                    "`signer` is required for ibc commands"
                 );
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(
-                    self.mnemonic,
-                    self.hd_path,
-                    self.account_prefix.unwrap(),
-                    self.address_algo,
-                )?;
 
                 let mut registrar = Registrar::try_from(self.handler)?;
                 registrar.register(Box::new(CliEventHandler::new(color_choice)));
                 let (sender, handle) = registrar.spawn();
 
                 ibc.subcommand
-                    .execute(db_pool, signer, sender, color_choice)
+                    .execute(
+                        db_pool,
+                        SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?,
+                        sender,
+                        color_choice,
+                    )
                     .await?;
 
                 handle
@@ -191,22 +170,22 @@ impl Command {
             }
             SubCommand::Start { addr } => {
                 ensure!(
-                    self.account_prefix.is_some(),
-                    "`account-prefix` is required for gRPC server"
+                    self.signer.is_some(),
+                    "`signer` is required for gRPC server"
                 );
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let signer = get_signer(
-                    self.mnemonic,
-                    self.hd_path,
-                    self.account_prefix.unwrap(),
-                    self.address_algo,
-                )?;
                 let registrar = Registrar::try_from(self.handler)?;
                 let (sender, handle) = registrar.spawn();
 
-                start_grpc(db_pool, signer, sender, addr).await?;
+                start_grpc(
+                    db_pool,
+                    Arc::new(SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?),
+                    sender,
+                    addr,
+                )
+                .await?;
 
                 handle
                     .await
@@ -220,24 +199,6 @@ async fn get_db_pool(db_path: &str) -> Result<DbPool> {
     DbPool::connect(&format!("sqlite:{}", db_path))
         .await
         .context("unable to connect to database")
-}
-
-fn get_signer(
-    mnemonic: Option<String>,
-    hd_path: String,
-    account_prefix: String,
-    algo: AddressAlgo,
-) -> Result<impl Signer + Clone> {
-    match mnemonic {
-        None => Err(anyhow!("currently, only mnemonic signer is supported")),
-        Some(ref mnemonic) => Ok(MnemonicSigner {
-            mnemonic: Mnemonic::new(mnemonic, Language::English)
-                .map_err(|_| anyhow!("invalid mnemonic"))?,
-            hd_path,
-            account_prefix,
-            algo,
-        }),
-    }
 }
 
 async fn create_db_file(db_path: &str) -> Result<()> {
