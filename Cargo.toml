@@ -1,2 +1,7 @@
 [workspace]
-members = ["solo-machine", "solo-machine-core", "event-hooks/stdout-logger"]
+members = [
+    "solo-machine",
+    "solo-machine-core",
+    "event-hooks/stdout-logger",
+    "signers/mnemonic-signer",
+]

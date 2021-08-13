@@ -23,7 +23,6 @@ prost = "0.7.0"
 prost-types = "0.7.0"
 rust_decimal = "1.15.0"
 solo-machine-core = { path = "../solo-machine-core", features = [
-    "mnemonic-signer",
     "solomachine-v2",
 ] }
 structopt = "0.3.22"

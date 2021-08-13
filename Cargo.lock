@@ -1252,6 +1252,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemonic-signer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bip32",
+ "k256",
+ "ripemd160",
+ "sha2",
+ "sha3",
+ "solo-machine-core",
+]
+
+[[package]]
 name = "multimap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2147,7 +2161,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bech32",
- "bip32",
  "chrono",
  "cosmos-sdk-proto",
  "ed25519-dalek",

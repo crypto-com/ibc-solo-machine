@@ -24,17 +24,11 @@ FLAGS:
     -V, --version     Prints version information
 
 OPTIONS:
-        --account-prefix <account-prefix>    Prefix for bech32 addresses used on solo machine [env: SOLO_ACCOUNT_PREFIX]
-        --address-algo <address-algo>        Algoritm to use for generating addresses [env: SOLO_ADDRESS_ALGO]
-                                             [default: secp256k1]  [possible values: secp256k1, eth-secp256k1]
-        --db-path <db-path>                  Database connection string [env: SOLO_DB_PATH]
-        --handler <handler>...               Register an event handler. Multiple event handlers can be registered and
-                                             they're executed in order they're provided in CLI. Also, if an event
-                                             handler returns an error when handling a message, all the future event
-                                             handlers will not get executed
-        --hd-path <hd-path>                  HD wallet path to be used when deriving public key from mnemonic [env:
-                                             SOLO_HD_PATH]  [default: m/44'/118'/0'/0/0]
-        --mnemonic <mnemonic>                Mnemonic phrase for account on IBC enabled chain [env: SOLO_MNEMONIC]
+        --db-path <db-path>       Database connection string [env: SOLO_DB_PATH]
+        --handler <handler>...    Register an event handler. Multiple event handlers can be registered and they're
+                                  executed in order they're provided in CLI. Also, if an event handler returns an error
+                                  when handling a message, all the future event handlers will not get executed
+        --signer <signer>         Register a signer (path to signer's `*.so` file) [env: SOLO_SIGNER]
 
 SUBCOMMANDS:
     chain             Chain operations (managing chain state and metadata)
@@ -64,8 +58,9 @@ command line options, environment variables or in a `.env` file.
 To connect to a cosmos SDK chain, we first need an account on cosmos SDK chain with enough tokens so that it can pay
 transaction fee for IBC transactions.
 
-1. Create a `.env` file with `SOLO_ACCOUNT_PREFIX`, `SOLO_DB_PATH`, `SOLO_MNEMONIC` and `SOLO_HD_PATH` (if it is
-   different from the default one).
+1. Create a `.env` file with `SOLO_DB_PATH`, `SOLO_SIGNER` and all the values needed by signer provided. For example,
+   `MnemonicSigner` expects `SOLO_MNEMONIC`, `SOLO_HD_PATH`, `SOLO_ACCOUNT_PREFIX` and `SOLO_ADDRESS_ALGO` environment
+   variables.
 2. Run `solo-machine init` to initialize SQLite database.
 3. Add cosmos SDK chain details using `solo-machine chain add`. This command takes following options which can either be
    provided using command line options, environment variables or a `.env` file. The two most important things are
@@ -114,7 +109,35 @@ If you wish to connect to ethermint using solo machine, you'll have to enable `e
 `cargo build --package solo-machine --features ethermint` and also provide `SOLO_ADDRESS_ALGO="eth-secp256k1"` in `.env`
 file if you're using native `eth-secp256k1` addresses on ethermint.
 
-### Adding event hooks
+### Signers
+
+Solo machine supports adding a transaction signer at runtime using dynamic libraries (`dylib`). To create a new signer,
+the dynamic library should expose a function named `register_signer` with signature:
+
+```rust
+fn register_signer(registrar: &mut dyn SignerRegistrar) -> anyhow::Result<()>
+```
+
+The implementation of `register_signer` can call `registrar.register()` and pass a `Arc`ed object of `Signer`. A sample
+signer can be found [here](signers/mnemonic-signer) and can be used as a template to develop more complex signers.
+
+Note that in `Cargo.toml`, we have to add following lines to make it a dynamic library.
+
+```toml
+[lib]
+crate-type = ["dylib"]
+```
+
+Once implemented, the library can be compiled to `*.so` file and supplied to solo machine using `--signer` CLI option or
+`SOLO_SIGNER` environment variable.
+
+For example,
+
+```
+solo-machine --signer="<path-to-dylib-.so-file>" ibc <chain-id> mint 100 gld
+```
+
+### Event hooks
 
 Solo machine supports adding event hooks at runtime using dynamic libraries (`dylib`). To create a new event hook, the
 dynamic library should expose a function named `register_handler` with signature:

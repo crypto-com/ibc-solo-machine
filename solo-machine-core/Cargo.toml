@@ -10,7 +10,6 @@ edition = "2018"
 anyhow = "1.0.42"
 async-trait = "0.1.51"
 bech32 = "0.8.1"
-bip32 = { version = "0.2.1", features = ["bip39"], optional = true }
 chrono = "0.4.19"
 cosmos-sdk-proto = "0.6.0"
 ed25519-dalek = "1.0.1"
@@ -45,7 +44,6 @@ urlencoding = "2.1.0"
 tonic-build = "0.5.1"
 
 [features]
-default = ["mnemonic-signer", "solomachine-v2"]
+default = ["solomachine-v2"]
 ethermint = ["sha3", "solomachine-v2"]
-mnemonic-signer = ["bip32"]
 solomachine-v2 = []
