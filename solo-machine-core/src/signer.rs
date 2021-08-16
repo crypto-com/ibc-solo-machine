@@ -29,6 +29,24 @@ impl FromStr for AddressAlgo {
     }
 }
 
+/// Type of message given to a signer
+#[derive(Debug)]
+pub enum Message<'a> {
+    /// [cosmos_sdk_proto::ibc::lightclients::solomachine::v1::SignBytes]
+    SignBytes(&'a [u8]),
+    /// [cosmos_sdk_proto::cosmos::tx::v1beta1::SignDoc]
+    SignDoc(&'a [u8]),
+}
+
+impl AsRef<[u8]> for Message<'_> {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::SignBytes(bytes) => bytes,
+            Self::SignDoc(bytes) => bytes,
+        }
+    }
+}
+
 /// This trait must be implemented by all the public key providers (e.g. mnemonic, ledger, etc.)
 pub trait ToPublicKey {
     /// Returns public key of signer
@@ -73,20 +91,20 @@ impl<T: ToPublicKey + ?Sized> ToPublicKey for Arc<T> {
 #[async_trait]
 pub trait Signer: ToPublicKey + Send + Sync {
     /// Signs the given message
-    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>>;
+    async fn sign(&self, request_id: Option<&str>, message: Message<'_>) -> Result<Vec<u8>>;
 }
 
 #[async_trait]
 impl<T: Signer> Signer for &T {
-    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
-        (*self).sign(message).await
+    async fn sign(&self, request_id: Option<&str>, message: Message<'_>) -> Result<Vec<u8>> {
+        (*self).sign(request_id, message).await
     }
 }
 
 #[async_trait]
 impl<T: Signer + ?Sized> Signer for Arc<T> {
-    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
-        (**self).sign(message).await
+    async fn sign(&self, request_id: Option<&str>, message: Message<'_>) -> Result<Vec<u8>> {
+        (**self).sign(request_id, message).await
     }
 }
 
