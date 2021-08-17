@@ -7,17 +7,16 @@ use std::{
     io::{stdout, Write},
     net::SocketAddr,
     path::PathBuf,
-    sync::Arc,
 };
 
 use anyhow::{ensure, Context, Result};
 use cli_table::{Cell, Row, RowStruct, Style};
-use solo_machine_core::{event::HandlerRegistrar, DbPool, MIGRATOR};
+use solo_machine_core::{event::HandlerRegistrar as _, DbPool, MIGRATOR};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::{
-    event::{cli_event_handler::CliEventHandler, Registrar},
+    event::{cli_event_handler::CliEventHandler, HandlerRegistrar},
     server::start_grpc,
     signer::SignerRegistrar,
 };
@@ -100,18 +99,15 @@ impl Command {
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
 
-                let mut registrar = Registrar::try_from(self.handler)?;
-                registrar.register(Box::new(CliEventHandler::new(color_choice)));
-                let (sender, handle) = registrar.spawn();
+                let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
+                handler_registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                let (sender, handle) = handler_registrar.spawn();
+
+                let signer = SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?;
 
                 chain
                     .subcommand
-                    .execute(
-                        db_pool,
-                        SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?,
-                        sender,
-                        color_choice,
-                    )
+                    .execute(db_pool, signer, sender, color_choice)
                     .await?;
 
                 handle
@@ -131,17 +127,14 @@ impl Command {
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
 
-                let mut registrar = Registrar::try_from(self.handler)?;
-                registrar.register(Box::new(CliEventHandler::new(color_choice)));
-                let (sender, handle) = registrar.spawn();
+                let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
+                handler_registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                let (sender, handle) = handler_registrar.spawn();
+
+                let signer = SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?;
 
                 ibc.subcommand
-                    .execute(
-                        db_pool,
-                        SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?,
-                        sender,
-                        color_choice,
-                    )
+                    .execute(db_pool, signer, sender, color_choice)
                     .await?;
 
                 handle
@@ -176,16 +169,12 @@ impl Command {
                 ensure!(self.db_path.is_some(), "`db-path` is required");
 
                 let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
-                let registrar = Registrar::try_from(self.handler)?;
-                let (sender, handle) = registrar.spawn();
+                let handler_registrar = HandlerRegistrar::try_from(self.handler)?;
+                let (sender, handle) = handler_registrar.spawn();
 
-                start_grpc(
-                    db_pool,
-                    Arc::new(SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?),
-                    sender,
-                    addr,
-                )
-                .await?;
+                let signer = SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?;
+
+                start_grpc(db_pool, signer, sender, addr).await?;
 
                 handle
                     .await

@@ -4,6 +4,7 @@ use solo_machine_core::{
     event::{EventHandler, HandlerRegistrar},
     Event,
 };
+use tokio::runtime::Handle;
 
 struct StdoutLogger {}
 
@@ -16,6 +17,7 @@ impl EventHandler for StdoutLogger {
 }
 
 #[no_mangle]
-pub fn register_handler(registrar: &mut dyn HandlerRegistrar) {
-    registrar.register(Box::new(StdoutLogger {}))
+pub fn register_handler(_runtime: &Handle, registrar: &mut dyn HandlerRegistrar) -> Result<()> {
+    registrar.register(Box::new(StdoutLogger {}));
+    Ok(())
 }

@@ -9,6 +9,7 @@ edition = "2018"
 crate-type = ["dylib"]
 
 [dependencies]
-anyhow = "1.0.42"
+anyhow = "1.0.43"
 async-trait = "0.1.51"
 solo-machine-core = { path = "../../solo-machine-core" }
+tokio = { version = "1.10.0", features = ["rt"] }
