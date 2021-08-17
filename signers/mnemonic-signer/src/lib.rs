@@ -19,7 +19,7 @@ use k256::ecdsa::{signature::DigestSigner, Signature, SigningKey};
 use ripemd160::Digest;
 use solo_machine_core::{
     cosmos::crypto::PublicKey,
-    signer::{AddressAlgo, SignerRegistrar},
+    signer::{AddressAlgo, Message, SignerRegistrar},
     Signer, ToPublicKey,
 };
 
@@ -103,7 +103,7 @@ impl ToPublicKey for MnemonicSigner {
 
 #[async_trait]
 impl Signer for MnemonicSigner {
-    async fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
+    async fn sign(&self, _request_id: Option<&str>, message: Message<'_>) -> Result<Vec<u8>> {
         let signing_key = self.get_signing_key()?;
 
         let signature: Signature = match self.algo {

@@ -298,6 +298,7 @@ impl IbcService {
             &denom,
             receiver.clone(),
             memo,
+            request_id.as_deref(),
         )
         .await?;
 
@@ -415,6 +416,7 @@ impl IbcService {
             &denom,
             receiver.clone(),
             memo.clone(),
+            request_id.as_deref(),
         )
         .await?;
 
@@ -441,7 +443,7 @@ impl IbcService {
             &self.notifier,
             Event::TokensBurnt {
                 chain_id,
-                request_id,
+                request_id: request_id.clone(),
                 from_address: address,
                 amount,
                 denom,
@@ -456,6 +458,7 @@ impl IbcService {
                 &mut chain,
                 extract_packets(&response)?,
                 memo,
+                request_id,
             )
             .await
         {
@@ -543,6 +546,7 @@ impl IbcService {
         chain: &mut Chain,
         packets: Vec<Packet>,
         memo: String,
+        request_id: Option<String>,
     ) -> Result<()>
     where
         C: Client + Send + Sync,
@@ -584,6 +588,7 @@ impl IbcService {
                 &mut *chain,
                 packet,
                 memo.clone(),
+                request_id.as_deref(),
             )
             .await?;
 

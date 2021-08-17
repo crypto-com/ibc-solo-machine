@@ -83,6 +83,7 @@ use crate::{
     },
     model::{chain, ibc as ibc_handler, Chain},
     proto::{proto_encode, AnyConvert},
+    signer::Message,
     Db, Signer, ToPublicKey,
 };
 
@@ -120,7 +121,7 @@ pub async fn msg_create_solo_machine_client(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, None).await
 }
 
 /// Builds a transaction to update solo machine client on IBC enabled chain
@@ -178,7 +179,7 @@ pub async fn msg_update_solo_machine_client<'e>(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, None).await
 }
 
 /// Builds a transaction to create a tendermint client on IBC enabled solo machine
@@ -238,7 +239,7 @@ pub async fn msg_connection_open_init(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, None).await
 }
 
 pub async fn msg_connection_open_ack(
@@ -285,7 +286,7 @@ pub async fn msg_connection_open_ack(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, None).await
 }
 
 pub async fn msg_channel_open_init(
@@ -309,7 +310,7 @@ pub async fn msg_channel_open_init(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, None).await
 }
 
 pub async fn msg_channel_open_ack(
@@ -336,7 +337,7 @@ pub async fn msg_channel_open_ack(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, None).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -349,6 +350,7 @@ pub async fn msg_token_send<C>(
     denom: &Identifier,
     receiver: String,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw>
 where
     C: Client + Send + Sync,
@@ -385,7 +387,7 @@ where
         timeout_timestamp: 0,
     };
 
-    let proof_commitment = get_packet_commitment_proof(&signer, chain, &packet).await?;
+    let proof_commitment = get_packet_commitment_proof(&signer, chain, &packet, request_id).await?;
 
     let proof_height = Height::new(0, chain.sequence.into());
 
@@ -399,7 +401,7 @@ where
         signer: sender,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 pub async fn msg_token_receive(
@@ -409,6 +411,7 @@ pub async fn msg_token_receive(
     denom: &Identifier,
     receiver: String,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
         anyhow!(
@@ -439,7 +442,7 @@ pub async fn msg_token_receive(
         timeout_timestamp: 0,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 pub async fn msg_token_receive_ack<'e>(
@@ -448,13 +451,19 @@ pub async fn msg_token_receive_ack<'e>(
     chain: &mut Chain,
     packet: Packet,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let proof_height = Height::new(0, chain.sequence.into());
     let acknowledgement = serde_json::to_vec(&json!({ "result": [1] }))?;
 
-    let proof_acked =
-        get_packet_acknowledgement_proof(&signer, chain, acknowledgement.clone(), packet.sequence)
-            .await?;
+    let proof_acked = get_packet_acknowledgement_proof(
+        &signer,
+        chain,
+        acknowledgement.clone(),
+        packet.sequence,
+        request_id,
+    )
+    .await?;
 
     *chain = chain::increment_sequence(executor, &chain.id).await?;
 
@@ -466,10 +475,16 @@ pub async fn msg_token_receive_ack<'e>(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
-async fn build<T>(signer: impl Signer, chain: &Chain, messages: &[T], memo: String) -> Result<TxRaw>
+async fn build<T>(
+    signer: impl Signer,
+    chain: &Chain,
+    messages: &[T],
+    memo: String,
+    request_id: Option<&str>,
+) -> Result<TxRaw>
 where
     T: AnyConvert,
 {
@@ -488,6 +503,7 @@ where
         auth_info_bytes.clone(),
         chain.id.to_string(),
         account_number,
+        request_id,
     )
     .await
     .context("unable to sign transaction")?;
@@ -552,6 +568,7 @@ async fn build_signature(
     auth_info_bytes: Vec<u8>,
     chain_id: String,
     account_number: u64,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let sign_doc = SignDoc {
         body_bytes,
@@ -562,7 +579,9 @@ async fn build_signature(
 
     let sign_doc_bytes = proto_encode(&sign_doc)?;
 
-    signer.sign(&sign_doc_bytes).await
+    signer
+        .sign(request_id, Message::SignDoc(&sign_doc_bytes))
+        .await
 }
 
 async fn get_account_details(signer: impl ToPublicKey, chain: &Chain) -> Result<(u64, u64)> {
@@ -661,6 +680,7 @@ async fn get_packet_acknowledgement_proof(
     chain: &Chain,
     acknowledgement: Vec<u8>,
     packet_sequence: u64,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let mut acknowledgement_path = PacketAcknowledgementPath::new(
         &chain.config.port_id,
@@ -693,13 +713,14 @@ async fn get_packet_acknowledgement_proof(
         data: acknowledgement_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes).await
+    timestamped_sign(signer, chain, sign_bytes, request_id).await
 }
 
 async fn get_packet_commitment_proof(
     signer: impl Signer,
     chain: &Chain,
     packet: &Packet,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let commitment_bytes = packet.commitment_bytes()?;
 
@@ -734,7 +755,7 @@ async fn get_packet_commitment_proof(
         data: packet_commitment_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes).await
+    timestamped_sign(signer, chain, sign_bytes, request_id).await
 }
 
 async fn get_channel_proof<'e>(
@@ -771,7 +792,7 @@ async fn get_channel_proof<'e>(
         data: channel_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes).await
+    timestamped_sign(signer, chain, sign_bytes, None).await
 }
 
 async fn get_connection_proof<'e>(
@@ -802,7 +823,7 @@ async fn get_connection_proof<'e>(
         data: connection_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes).await
+    timestamped_sign(signer, chain, sign_bytes, None).await
 }
 
 async fn get_client_proof<'e>(
@@ -834,7 +855,7 @@ async fn get_client_proof<'e>(
         data: client_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes).await
+    timestamped_sign(signer, chain, sign_bytes, None).await
 }
 
 async fn get_consensus_proof(
@@ -881,7 +902,7 @@ async fn get_consensus_proof(
         data: consensus_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes).await
+    timestamped_sign(signer, chain, sign_bytes, None).await
 }
 
 async fn get_header_proof(
@@ -905,15 +926,16 @@ async fn get_header_proof(
         data: header_data_bytes,
     };
 
-    sign(signer, sign_bytes).await
+    sign(signer, None, sign_bytes).await
 }
 
 async fn timestamped_sign(
     signer: impl Signer,
     chain: &Chain,
     sign_bytes: SignBytes,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
-    let signature_data = sign(signer, sign_bytes).await?;
+    let signature_data = sign(signer, request_id, sign_bytes).await?;
 
     let timestamped_signature_data = TimestampedSignatureData {
         signature_data,
@@ -923,9 +945,15 @@ async fn timestamped_sign(
     proto_encode(&timestamped_signature_data)
 }
 
-async fn sign(signer: impl Signer, sign_bytes: SignBytes) -> Result<Vec<u8>> {
+async fn sign(
+    signer: impl Signer,
+    request_id: Option<&str>,
+    sign_bytes: SignBytes,
+) -> Result<Vec<u8>> {
     let sign_bytes = proto_encode(&sign_bytes)?;
-    let signature = signer.sign(&sign_bytes).await?;
+    let signature = signer
+        .sign(request_id, Message::SignBytes(&sign_bytes))
+        .await?;
 
     let signature_data = SignatureData {
         sum: Some(SignatureDataInner::Single(SingleSignatureData {
