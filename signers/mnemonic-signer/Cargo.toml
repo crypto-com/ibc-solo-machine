@@ -9,7 +9,7 @@ edition = "2018"
 crate-type = ["dylib"]
 
 [dependencies]
-anyhow = "1.0.42"
+anyhow = "1.0.43"
 async-trait = "0.1.51"
 bip32 = { version = "0.2.1", features = ["bip39"] }
 k256 = { version = "0.9.6", features = ["ecdsa"] }
@@ -17,6 +17,7 @@ ripemd160 = "0.9.1"
 sha2 = "0.9.5"
 sha3 = { version = "0.9.1", optional = true }
 solo-machine-core = { path = "../../solo-machine-core" }
+tokio = { version = "1.10.0", features = ["rt"] }
 
 [features]
 default = []

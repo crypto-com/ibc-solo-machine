@@ -6,20 +6,21 @@ use anyhow::{Context, Error, Result};
 use async_trait::async_trait;
 use libloading::{Library, Symbol};
 use solo_machine_core::{
-    event::{EventHandler, HandlerRegistrar},
+    event::{EventHandler, HandlerRegistrar as IHandlerRegistrar},
     Event,
 };
 use tokio::{
+    runtime::Handle,
     sync::mpsc::{unbounded_channel, UnboundedSender},
     task::JoinHandle,
 };
 
 #[derive(Default)]
-pub struct Registrar {
+pub struct HandlerRegistrar {
     event_handlers: Vec<Box<dyn EventHandler>>,
 }
 
-impl Registrar {
+impl HandlerRegistrar {
     pub fn spawn(self) -> (UnboundedSender<Event>, JoinHandle<Result<()>>) {
         let (sender, mut receiver) = unbounded_channel();
 
@@ -51,11 +52,15 @@ impl Registrar {
             #[cfg(not(target_os = "linux"))]
             let library = Library::new(file).context("unable to load event handler")?;
 
-            let register_fn: Symbol<unsafe extern "C" fn(&mut dyn HandlerRegistrar)> = library
+            let register_fn: Symbol<
+                unsafe extern "C" fn(&Handle, &mut dyn IHandlerRegistrar) -> Result<()>,
+            > = library
                 .get("register_handler".as_bytes())
                 .context("unable to load `register_handler` function from event hook")?;
 
-            register_fn(self);
+            let runtime = Handle::current();
+
+            register_fn(&runtime, self)?;
         }
 
         Ok(())
@@ -63,7 +68,7 @@ impl Registrar {
 }
 
 #[async_trait]
-impl EventHandler for Registrar {
+impl EventHandler for HandlerRegistrar {
     async fn handle(&self, event: Event) -> Result<()> {
         // TODO: parallelise this
         for handler in self.event_handlers.iter() {
@@ -74,13 +79,13 @@ impl EventHandler for Registrar {
     }
 }
 
-impl HandlerRegistrar for Registrar {
+impl IHandlerRegistrar for HandlerRegistrar {
     fn register(&mut self, handler: Box<dyn EventHandler>) {
         self.event_handlers.push(handler)
     }
 }
 
-impl TryFrom<Vec<PathBuf>> for Registrar {
+impl TryFrom<Vec<PathBuf>> for HandlerRegistrar {
     type Error = Error;
 
     fn try_from(files: Vec<PathBuf>) -> Result<Self, Self::Error> {

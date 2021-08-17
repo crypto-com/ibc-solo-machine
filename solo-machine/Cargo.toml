@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.42"
+anyhow = "1.0.43"
 async-trait = "0.1.51"
 bip32 = { version = "0.2.1", features = ["bip39"] }
 cli-table = { version = "0.4.6", default-features = false, features = [
@@ -28,7 +28,7 @@ solo-machine-core = { path = "../solo-machine-core", features = [
 structopt = "0.3.22"
 tendermint = "0.21.0"
 termcolor = "1.1.2"
-tokio = { version = "1.9.0", features = ["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1.10.0", features = ["fs", "macros", "rt-multi-thread"] }
 tonic = "0.4.3"
 
 [features]
