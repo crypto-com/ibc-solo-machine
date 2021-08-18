@@ -10,7 +10,6 @@ use solo_machine_core::{
     Event,
 };
 use tokio::{
-    runtime::Handle,
     sync::mpsc::{unbounded_channel, UnboundedSender},
     task::JoinHandle,
 };
@@ -53,14 +52,12 @@ impl HandlerRegistrar {
             let library = Library::new(file).context("unable to load event handler")?;
 
             let register_fn: Symbol<
-                unsafe extern "C" fn(&Handle, &mut dyn IHandlerRegistrar) -> Result<()>,
+                unsafe extern "C" fn(&mut dyn IHandlerRegistrar) -> Result<()>,
             > = library
                 .get("register_handler".as_bytes())
                 .context("unable to load `register_handler` function from event hook")?;
 
-            let runtime = Handle::current();
-
-            register_fn(&runtime, self)?;
+            register_fn(self)?;
         }
 
         Ok(())

@@ -22,7 +22,6 @@ use solo_machine_core::{
     signer::{AddressAlgo, Message, SignerRegistrar},
     Signer, ToPublicKey,
 };
-use tokio::runtime::Handle;
 
 const DEFAULT_HD_PATH: &str = "m/44'/118'/0'/0/0";
 const DEFAULT_ACCOUNT_PREFIX: &str = "cosmos";
@@ -120,7 +119,7 @@ impl Signer for MnemonicSigner {
 }
 
 #[no_mangle]
-pub fn register_signer(_runtime: &Handle, registrar: &mut dyn SignerRegistrar) -> Result<()> {
+pub fn register_signer(registrar: &mut dyn SignerRegistrar) -> Result<()> {
     registrar.register(Arc::new(MnemonicSigner::from_env()?));
     Ok(())
 }

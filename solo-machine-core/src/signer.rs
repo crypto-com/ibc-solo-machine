@@ -1,5 +1,5 @@
 //! Utilities for signing transactions
-use std::{str::FromStr, sync::Arc};
+use std::{fmt, str::FromStr, sync::Arc};
 
 use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
@@ -14,6 +14,16 @@ pub enum AddressAlgo {
     #[cfg(feature = "ethermint")]
     /// EthSecp256k1 (ethermint)
     EthSecp256k1,
+}
+
+impl fmt::Display for AddressAlgo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Secp256k1 => write!(f, "secp256k1"),
+            #[cfg(feature = "ethermint")]
+            Self::EthSecp256k1 => write!(f, "eth-secp256k1"),
+        }
+    }
 }
 
 impl FromStr for AddressAlgo {
@@ -36,6 +46,16 @@ pub enum Message<'a> {
     SignBytes(&'a [u8]),
     /// [cosmos_sdk_proto::cosmos::tx::v1beta1::SignDoc]
     SignDoc(&'a [u8]),
+}
+
+impl<'a> Message<'a> {
+    /// Returns the message type of current message
+    pub fn message_type(&self) -> &'static str {
+        match self {
+            Self::SignBytes(_) => "sign-bytes",
+            Self::SignDoc(_) => "sign-doc",
+        }
+    }
 }
 
 impl AsRef<[u8]> for Message<'_> {
