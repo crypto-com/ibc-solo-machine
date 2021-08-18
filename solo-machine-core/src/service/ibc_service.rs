@@ -306,12 +306,12 @@ impl IbcService {
             .broadcast_tx_commit(proto_encode(&msg)?.into())
             .await?;
 
+        let transaction_hash = ensure_response_success(&response)?;
+
         transaction
             .commit()
             .await
             .context("unable to commit transaction for sending tokens over IBC")?;
-
-        let transaction_hash = ensure_response_success(&response)?;
 
         let success: bool = extract_attribute(
             &response.deliver_tx.events,
@@ -380,31 +380,33 @@ impl IbcService {
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
             .context("unable to connect to rpc client")?;
 
-        let mut transaction = self
-            .db_pool
-            .begin()
-            .await
-            .context("unable to begin database transaction")?;
+        // TODO: Remove this code once fully tested that updating solo machine client is not needed
+        //
+        // let mut transaction = self
+        //     .db_pool
+        //     .begin()
+        //     .await
+        //     .context("unable to begin database transaction")?;
 
-        let msg = transaction_builder::msg_update_solo_machine_client(
-            &mut transaction,
-            &signer,
-            &mut chain,
-            None,
-            memo.clone(),
-        )
-        .await?;
+        // let msg = transaction_builder::msg_update_solo_machine_client(
+        //     &mut transaction,
+        //     &signer,
+        //     &mut chain,
+        //     None,
+        //     memo.clone(),
+        // )
+        // .await?;
 
-        let response = rpc_client
-            .broadcast_tx_commit(proto_encode(&msg)?.into())
-            .await?;
+        // let response = rpc_client
+        //     .broadcast_tx_commit(proto_encode(&msg)?.into())
+        //     .await?;
 
-        transaction
-            .commit()
-            .await
-            .context("unable to commit transaction for receiving tokens over IBC")?;
+        // ensure_response_success(&response)?;
 
-        ensure_response_success(&response)?;
+        // transaction
+        //     .commit()
+        //     .await
+        //     .context("unable to commit transaction for receiving tokens over IBC")?;
 
         let address = signer.to_account_address()?;
         let receiver = receiver.unwrap_or_else(|| address.clone());

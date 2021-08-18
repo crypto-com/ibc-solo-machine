@@ -17,7 +17,6 @@ ripemd160 = "0.9.1"
 sha2 = "0.9.5"
 sha3 = { version = "0.9.1", optional = true }
 solo-machine-core = { path = "../../solo-machine-core" }
-tokio = { version = "1.10.0", features = ["rt"] }
 
 [features]
 default = []

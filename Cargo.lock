@@ -1263,7 +1263,6 @@ dependencies = [
  "sha2",
  "sha3",
  "solo-machine-core",
- "tokio",
 ]
 
 [[package]]
@@ -2317,7 +2316,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "solo-machine-core",
- "tokio",
 ]
 
 [[package]]

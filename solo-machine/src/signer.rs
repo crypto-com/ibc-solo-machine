@@ -3,7 +3,6 @@ use std::{convert::TryFrom, ffi::OsStr, path::PathBuf, sync::Arc};
 use anyhow::{anyhow, Context, Error, Result};
 use libloading::{Library, Symbol};
 use solo_machine_core::{signer::SignerRegistrar as ISignerRegistrar, Signer};
-use tokio::runtime::Handle;
 
 #[derive(Default)]
 pub struct SignerRegistrar {
@@ -32,15 +31,12 @@ impl SignerRegistrar {
             #[cfg(not(target_os = "linux"))]
             let library = Library::new(file).context("unable to load signer")?;
 
-            let register_fn: Symbol<
-                unsafe extern "C" fn(&Handle, &mut dyn ISignerRegistrar) -> Result<()>,
-            > = library
-                .get("register_signer".as_bytes())
-                .context("unable to load `register_signer` function from signer")?;
+            let register_fn: Symbol<unsafe extern "C" fn(&mut dyn ISignerRegistrar) -> Result<()>> =
+                library
+                    .get("register_signer".as_bytes())
+                    .context("unable to load `register_signer` function from signer")?;
 
-            let runtime = Handle::current();
-
-            register_fn(&runtime, self)?;
+            register_fn(self)?;
         }
 
         Ok(())
