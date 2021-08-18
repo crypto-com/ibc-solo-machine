@@ -121,11 +121,10 @@ impl IbcCommand {
                 receiver,
                 memo,
                 request_id,
-            } => {
-                ibc_service
-                    .mint(signer, chain_id, request_id, amount, denom, receiver, memo)
-                    .await
-            }
+            } => ibc_service
+                .mint(signer, chain_id, request_id, amount, denom, receiver, memo)
+                .await
+                .map(|_| ()),
             Self::Burn {
                 chain_id,
                 amount,
@@ -133,11 +132,10 @@ impl IbcCommand {
                 receiver,
                 memo,
                 request_id,
-            } => {
-                ibc_service
-                    .burn(signer, chain_id, request_id, amount, denom, receiver, memo)
-                    .await
-            }
+            } => ibc_service
+                .burn(signer, chain_id, request_id, amount, denom, receiver, memo)
+                .await
+                .map(|_| ()),
             Self::UpdateSigner {
                 chain_id,
                 new_public_key,

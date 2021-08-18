@@ -272,7 +272,7 @@ impl IbcService {
         denom: Identifier,
         receiver: Option<String>,
         memo: String,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let mut chain = chain::get_chain(&self.db_pool, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
@@ -342,11 +342,11 @@ impl IbcService {
                     to_address: receiver,
                     amount,
                     denom,
-                    transaction_hash,
+                    transaction_hash: transaction_hash.clone(),
                 },
             )?;
 
-            Ok(())
+            Ok(transaction_hash)
         } else {
             let error = extract_attribute(
                 &response.deliver_tx.events,
@@ -372,7 +372,7 @@ impl IbcService {
         denom: Identifier,
         receiver: Option<String>,
         memo: String,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let mut chain = chain::get_chain(&self.db_pool, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
@@ -449,7 +449,7 @@ impl IbcService {
                 from_address: address,
                 amount,
                 denom,
-                transaction_hash,
+                transaction_hash: transaction_hash.clone(),
             },
         )?;
 
@@ -474,7 +474,7 @@ impl IbcService {
             )?;
         }
 
-        Ok(())
+        Ok(transaction_hash)
     }
 
     /// Updates signer for future IBC transactions
