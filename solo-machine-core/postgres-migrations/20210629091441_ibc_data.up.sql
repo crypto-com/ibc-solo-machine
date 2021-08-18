@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS ibc_data (
+    path TEXT PRIMARY KEY NOT NULL,
+    data BYTEA NOT NULL
+);

@@ -34,6 +34,7 @@ tonic = "0.4.3"
 [features]
 default = []
 ethermint = ["solo-machine-core/ethermint"]
+postgres = ["solo-machine-core/postgres"]
 
 [build-dependencies]
 prost-build = "0.7.0"

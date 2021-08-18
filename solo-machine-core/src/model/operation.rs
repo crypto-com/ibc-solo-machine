@@ -46,7 +46,7 @@ pub struct RawOperation {
     /// Denom of tokens
     pub denom: String,
     /// Amount of tokens
-    pub amount: u32,
+    pub amount: i64,
     /// Type of operation
     pub operation_type: Json<OperationType>,
     /// On-chain transaction hash (in hex)
@@ -62,7 +62,7 @@ impl From<Operation> for RawOperation {
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.to_string(),
-            amount: op.amount,
+            amount: op.amount.into(),
             operation_type: Json(op.operation_type),
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,
@@ -79,7 +79,7 @@ impl TryFrom<RawOperation> for Operation {
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.parse()?,
-            amount: op.amount,
+            amount: op.amount.try_into()?,
             operation_type: op.operation_type.0,
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,

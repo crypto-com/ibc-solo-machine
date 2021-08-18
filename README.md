@@ -24,7 +24,7 @@ FLAGS:
     -V, --version     Prints version information
 
 OPTIONS:
-        --db-path <db-path>       Database connection string [env: SOLO_DB_PATH]
+        --db-uri <db-uri>         Database connection string [example: `sqlite://solo-machine.db`] [env: SOLO_DB_URI]
         --handler <handler>...    Register an event handler. Multiple event handlers can be registered and they're
                                   executed in order they're provided in CLI. Also, if an event handler returns an error
                                   when handling a message, all the future event handlers will not get executed
@@ -58,7 +58,7 @@ command line options, environment variables or in a `.env` file.
 To connect to a cosmos SDK chain, we first need an account on cosmos SDK chain with enough tokens so that it can pay
 transaction fee for IBC transactions.
 
-1. Create a `.env` file with `SOLO_DB_PATH`, `SOLO_SIGNER` and all the values needed by signer provided. For example,
+1. Create a `.env` file with `SOLO_DB_URI`, `SOLO_SIGNER` and all the values needed by signer provided. For example,
    `MnemonicSigner` expects `SOLO_MNEMONIC`, `SOLO_HD_PATH`, `SOLO_ACCOUNT_PREFIX` and `SOLO_ADDRESS_ALGO` environment
    variables.
 2. Run `solo-machine init` to initialize SQLite database.
@@ -108,6 +108,15 @@ transaction fee for IBC transactions.
 If you wish to connect to ethermint using solo machine, you'll have to enable `ethermint` feature when building:
 `cargo build --package solo-machine --features ethermint` and also provide `SOLO_ADDRESS_ALGO="eth-secp256k1"` in `.env`
 file if you're using native `eth-secp256k1` addresses on ethermint.
+
+### Use PostgreSQL instead of SQLite
+
+If you wish to use PostgreSQL instead of SQLite, you'll have to enable `postgres` feature when building:
+`cargo build --features postgres` and provide `SOLO_DB_URI` in below format:
+
+```
+postgresql://[user[:password]@][host][:port][/dbname]
+```
 
 ### Signers
 
