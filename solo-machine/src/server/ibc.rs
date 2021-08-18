@@ -74,7 +74,8 @@ where
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
         let receiver = request.receiver_address;
 
-        self.core_service
+        let transaction_hash = self
+            .core_service
             .mint(
                 &self.signer,
                 chain_id,
@@ -87,7 +88,7 @@ where
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        Ok(Response::new(MintResponse {}))
+        Ok(Response::new(MintResponse { transaction_hash }))
     }
 
     async fn burn(&self, request: Request<BurnRequest>) -> Result<Response<BurnResponse>, Status> {
@@ -106,7 +107,8 @@ where
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
         let receiver = request.receiver_address;
 
-        self.core_service
+        let transaction_hash = self
+            .core_service
             .burn(
                 &self.signer,
                 chain_id,
@@ -119,7 +121,7 @@ where
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        Ok(Response::new(BurnResponse {}))
+        Ok(Response::new(BurnResponse { transaction_hash }))
     }
 
     async fn update_signer(

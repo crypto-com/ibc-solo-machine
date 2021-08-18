@@ -45,7 +45,10 @@ message MintRequest {
     optional string receiver_address = 6;
 }
 
-message MintResponse {}
+message MintResponse {
+    // Hash of transaction on IBC enabled chain (in hex)
+    string transaction_hash = 1;
+}
 
 message BurnRequest {
     // Chain ID of IBC enabled chain to send to
@@ -62,7 +65,10 @@ message BurnRequest {
     optional string receiver_address = 6;
 }
 
-message BurnResponse {}
+message BurnResponse {
+    // Hash of transaction on IBC enabled chain (in hex)
+    string transaction_hash = 1;
+}
 
 message UpdateSignerRequest {
     // Chain ID of IBC enabled chain
