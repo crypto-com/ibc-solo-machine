@@ -46,4 +46,5 @@ tonic-build = "0.5.1"
 [features]
 default = ["solomachine-v2"]
 ethermint = ["sha3", "solomachine-v2"]
+postgres = ["sqlx/postgres"]
 solomachine-v2 = []

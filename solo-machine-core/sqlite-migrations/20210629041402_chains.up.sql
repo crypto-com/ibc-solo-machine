@@ -3,8 +3,8 @@ CREATE TABLE IF NOT EXISTS chains (
     node_id TEXT NOT NULL,
     config TEXT NOT NULL,
     consensus_timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    sequence INTEGER NOT NULL DEFAULT 1,
-    packet_sequence INTEGER NOT NULL DEFAULT 1,
+    sequence BIGINT NOT NULL DEFAULT 1,
+    packet_sequence BIGINT NOT NULL DEFAULT 1,
     connection_details TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

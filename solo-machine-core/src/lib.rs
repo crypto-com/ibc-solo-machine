@@ -17,12 +17,41 @@ pub use self::{
     signer::{Signer, ToPublicKey},
 };
 
-use sqlx::{migrate::Migrator, Sqlite, SqlitePool};
+use anyhow::{Context, Result};
+use sqlx::migrate::{MigrateDatabase, Migrator};
 
-/// Database type
-pub type Db = Sqlite;
-/// Database pool type
-pub type DbPool = SqlitePool;
+#[cfg(not(feature = "postgres"))]
+pub use sqlx::{Sqlite as Db, SqlitePool as DbPool};
+
+#[cfg(feature = "postgres")]
+pub use sqlx::{PgPool as DbPool, Postgres as Db};
 
 /// Database migrator
-pub const MIGRATOR: Migrator = sqlx::migrate!();
+#[cfg(not(feature = "postgres"))]
+const MIGRATOR: Migrator = sqlx::migrate!("./sqlite-migrations");
+
+/// Database migrator
+#[cfg(feature = "postgres")]
+const MIGRATOR: Migrator = sqlx::migrate!("./postgres-migrations");
+
+/// Initializes database
+pub async fn init_db(connection_str: &str) -> Result<()> {
+    Db::create_database(connection_str)
+        .await
+        .context("unable to create database")
+}
+
+/// Connects to database and returns database pool
+pub async fn connect_db(connection_str: &str) -> Result<DbPool> {
+    DbPool::connect(connection_str)
+        .await
+        .context("unable to connect to database")
+}
+
+/// Runs all the migrations on database
+pub async fn run_migrations(db_pool: &DbPool) -> Result<()> {
+    MIGRATOR
+        .run(db_pool)
+        .await
+        .context("unable to run migrations")
+}

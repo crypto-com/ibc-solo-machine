@@ -108,9 +108,9 @@ struct RawChain {
     /// Consensus timestamp of solo machine (used when creating transactions on chain)
     pub consensus_timestamp: DateTime<Utc>,
     /// Sequence of solo machine (used when creating transactions on chain)
-    pub sequence: u32,
+    pub sequence: i64,
     /// Packet sequence of solo machine (used when creating transactions on chain)
-    pub packet_sequence: u32,
+    pub packet_sequence: i64,
     /// IBC connection details
     pub connection_details: Option<Json<ConnectionDetails>>,
     /// Creation time of chain
@@ -182,8 +182,8 @@ impl From<Chain> for RawChain {
             node_id: chain.node_id.to_string(),
             config: Json(chain.config),
             consensus_timestamp: chain.consensus_timestamp,
-            sequence: chain.sequence,
-            packet_sequence: chain.packet_sequence,
+            sequence: chain.sequence.into(),
+            packet_sequence: chain.packet_sequence.into(),
             connection_details: chain.connection_details.map(Json),
             created_at: chain.created_at,
             updated_at: chain.updated_at,
@@ -203,8 +203,8 @@ impl TryFrom<RawChain> for Chain {
                 .map_err(|err| anyhow!("unable to parse node id: {}", err))?,
             config: raw.config.0,
             consensus_timestamp: raw.consensus_timestamp,
-            sequence: raw.sequence,
-            packet_sequence: raw.packet_sequence,
+            sequence: raw.sequence.try_into()?,
+            packet_sequence: raw.packet_sequence.try_into()?,
             connection_details: raw.connection_details.map(|json| json.0),
             created_at: raw.created_at,
             updated_at: raw.updated_at,

@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{ensure, Context, Result};
 use cli_table::{Cell, Row, RowStruct, Style};
-use solo_machine_core::{event::HandlerRegistrar as _, DbPool, MIGRATOR};
+use solo_machine_core::{connect_db, event::HandlerRegistrar as _, init_db, run_migrations};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -33,8 +33,16 @@ pub struct Command {
     #[structopt(long)]
     no_style: bool,
     /// Database connection string
-    #[structopt(long, env = "SOLO_DB_PATH", hide_env_values = true)]
-    db_path: Option<String>,
+    #[cfg_attr(
+        not(feature = "postgres"),
+        doc = "[example: `sqlite://solo-machine.db`]"
+    )]
+    #[cfg_attr(
+        feature = "postgres",
+        doc = "[example: `postgresql://postgres:postgres@localhost:5432/solo_machine`]"
+    )]
+    #[structopt(long, env = "SOLO_DB_URI", hide_env_values = true)]
+    db_uri: Option<String>,
     /// Register a signer (path to signer's `*.so` file)
     #[structopt(long, env = "SOLO_SIGNER", hide_env_values = true)]
     signer: Option<PathBuf>,
@@ -95,9 +103,9 @@ impl Command {
                     self.signer.is_some(),
                     "`signer` is required for chain commands"
                 );
-                ensure!(self.db_path.is_some(), "`db-path` is required");
+                ensure!(self.db_uri.is_some(), "`db-uri` is required");
 
-                let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
+                let db_pool = connect_db(&self.db_uri.unwrap()).await?;
 
                 let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
                 handler_registrar.register(Box::new(CliEventHandler::new(color_choice)));
@@ -123,9 +131,9 @@ impl Command {
                     self.signer.is_some(),
                     "`signer` is required for ibc commands"
                 );
-                ensure!(self.db_path.is_some(), "`db-path` is required");
+                ensure!(self.db_uri.is_some(), "`db-uri` is required");
 
-                let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
+                let db_pool = connect_db(&self.db_uri.unwrap()).await?;
 
                 let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
                 handler_registrar.register(Box::new(CliEventHandler::new(color_choice)));
@@ -142,17 +150,14 @@ impl Command {
                     .context("unable to join event hook registrar task")?
             }
             SubCommand::Init => {
-                ensure!(self.db_path.is_some(), "`db-path` is required");
+                ensure!(self.db_uri.is_some(), "`db-uri` is required");
 
-                let db_path = self.db_path.unwrap();
-                create_db_file(&db_path).await?;
+                let db_uri = self.db_uri.unwrap();
+                init_db(&db_uri).await?;
 
-                let db_pool = get_db_pool(&db_path).await?;
+                let db_pool = connect_db(&db_uri).await?;
 
-                MIGRATOR
-                    .run(&db_pool)
-                    .await
-                    .context("unable to run migrations")?;
+                run_migrations(&db_pool).await?;
 
                 let mut stdout = StandardStream::stdout(color_choice);
                 print_stream(
@@ -166,9 +171,9 @@ impl Command {
                     self.signer.is_some(),
                     "`signer` is required for gRPC server"
                 );
-                ensure!(self.db_path.is_some(), "`db-path` is required");
+                ensure!(self.db_uri.is_some(), "`db-uri` is required");
 
-                let db_pool = get_db_pool(&self.db_path.unwrap()).await?;
+                let db_pool = connect_db(&self.db_uri.unwrap()).await?;
                 let handler_registrar = HandlerRegistrar::try_from(self.handler)?;
                 let (sender, handle) = handler_registrar.spawn();
 
@@ -182,22 +187,6 @@ impl Command {
             }
         }
     }
-}
-
-async fn get_db_pool(db_path: &str) -> Result<DbPool> {
-    DbPool::connect(&format!("sqlite:{}", db_path))
-        .await
-        .context("unable to connect to database")
-}
-
-async fn create_db_file(db_path: &str) -> Result<()> {
-    tokio::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(db_path)
-        .await
-        .map(|_| ())
-        .context("unable to create db file")
 }
 
 fn add_row(table: &mut Vec<RowStruct>, title: &str, value: impl Display) {
