@@ -29,6 +29,9 @@ pub enum IbcCommand {
             hide_env_values = true
         )]
         memo: String,
+        /// Force create a new connection even if one already exists
+        #[structopt(long)]
+        force: bool,
     },
     /// Mint some tokens on IBC enabled chain
     Mint {
@@ -113,7 +116,11 @@ impl IbcCommand {
         let ibc_service = IbcService::new_with_notifier(db_pool, sender);
 
         match self {
-            Self::Connect { chain_id, memo } => ibc_service.connect(signer, chain_id, memo).await,
+            Self::Connect {
+                chain_id,
+                memo,
+                force,
+            } => ibc_service.connect(signer, chain_id, memo, force).await,
             Self::Mint {
                 chain_id,
                 amount,

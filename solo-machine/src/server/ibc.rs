@@ -49,9 +49,10 @@ where
             .parse()
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
+        let force = request.force;
 
         self.core_service
-            .connect(&self.signer, chain_id, memo)
+            .connect(&self.signer, chain_id, memo, force)
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 

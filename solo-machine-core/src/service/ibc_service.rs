@@ -77,6 +77,7 @@ impl IbcService {
         signer: impl Signer,
         chain_id: ChainId,
         memo: String,
+        force: bool,
     ) -> Result<()> {
         let mut transaction = self
             .db_pool
@@ -87,6 +88,13 @@ impl IbcService {
         let mut chain = chain::get_chain(&mut transaction, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+
+        if !force {
+            ensure!(
+                chain.connection_details.is_none(),
+                "connection is already established with given chain"
+            );
+        }
 
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
             .context("unable to connect to rpc client")?;
