@@ -29,7 +29,7 @@ structopt = "0.3.22"
 tendermint = "0.21.0"
 termcolor = "1.1.2"
 tokio = { version = "1.10.0", features = ["fs", "macros", "rt-multi-thread"] }
-tonic = "0.4.3"
+tonic = { version = "0.4.3", features = ["tls", "tls-roots"] }
 
 [features]
 default = []

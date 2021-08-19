@@ -37,7 +37,7 @@ tendermint = "0.21.0"
 tendermint-light-client = "0.21.0"
 tendermint-rpc = { version = "0.21.0", features = ["http-client"] }
 tokio = { version = "1.10.0", features = ["sync"] }
-tonic = "0.4.3"
+tonic = { version = "0.4.3", features = ["tls", "tls-roots"] }
 urlencoding = "2.1.0"
 
 [build-dependencies]
