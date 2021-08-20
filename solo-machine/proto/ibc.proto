@@ -63,8 +63,6 @@ message BurnRequest {
     uint32 amount = 4;
     // Denom of tokens to be sent
     string denom = 5;
-    // Receiver address on IBC enabled chain (if this is not provided, tokens will be received to signer's address)
-    optional string receiver_address = 6;
 }
 
 message BurnResponse {

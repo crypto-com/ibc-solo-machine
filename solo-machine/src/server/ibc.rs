@@ -106,19 +106,10 @@ where
             .denom
             .parse()
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
-        let receiver = request.receiver_address;
 
         let transaction_hash = self
             .core_service
-            .burn(
-                &self.signer,
-                chain_id,
-                request_id,
-                amount,
-                denom,
-                receiver,
-                memo,
-            )
+            .burn(&self.signer, chain_id, request_id, amount, denom, memo)
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 

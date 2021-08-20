@@ -378,7 +378,6 @@ impl IbcService {
         request_id: Option<String>,
         amount: u32,
         denom: Identifier,
-        receiver: Option<String>,
         memo: String,
     ) -> Result<String> {
         let mut chain = chain::get_chain(&self.db_pool, &chain_id)
@@ -417,14 +416,13 @@ impl IbcService {
         //     .context("unable to commit transaction for receiving tokens over IBC")?;
 
         let address = signer.to_account_address()?;
-        let receiver = receiver.unwrap_or_else(|| address.clone());
 
         let msg = transaction_builder::msg_token_receive(
             &signer,
             &chain,
             amount,
             &denom,
-            receiver.clone(),
+            address.clone(),
             memo.clone(),
             request_id.as_deref(),
         )
