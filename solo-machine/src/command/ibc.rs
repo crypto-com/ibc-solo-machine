@@ -63,8 +63,6 @@ pub enum IbcCommand {
         amount: u32,
         /// Denom of tokens to receive from IBC enabled chain
         denom: Identifier,
-        /// Optional receiver address (if this is not provided, tokens will be received to signer's address)
-        receiver: Option<String>,
         /// Optional memo to include in transactions
         #[structopt(
             long,
@@ -136,11 +134,10 @@ impl IbcCommand {
                 chain_id,
                 amount,
                 denom,
-                receiver,
                 memo,
                 request_id,
             } => ibc_service
-                .burn(signer, chain_id, request_id, amount, denom, receiver, memo)
+                .burn(signer, chain_id, request_id, amount, denom, memo)
                 .await
                 .map(|_| ()),
             Self::UpdateSigner {
