@@ -25,7 +25,7 @@ pub struct Operation {
     /// Denom of tokens
     pub denom: Identifier,
     /// Amount of tokens
-    pub amount: String,
+    pub amount: u64,
     /// Type of operation
     pub operation_type: OperationType,
     /// On-chain transaction hash (in hex)
@@ -46,7 +46,7 @@ pub struct RawOperation {
     /// Denom of tokens
     pub denom: String,
     /// Amount of tokens
-    pub amount: String,
+    pub amount: Vec<u8>,
     /// Type of operation
     pub operation_type: Json<OperationType>,
     /// On-chain transaction hash (in hex)
@@ -62,7 +62,7 @@ impl From<Operation> for RawOperation {
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.to_string(),
-            amount: op.amount,
+            amount: op.amount.to_le_bytes().to_vec(),
             operation_type: Json(op.operation_type),
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,
@@ -74,12 +74,22 @@ impl TryFrom<RawOperation> for Operation {
     type Error = Error;
 
     fn try_from(op: RawOperation) -> Result<Self, Self::Error> {
+        let mut amount_bytes = [0; 8];
+
+        ensure!(
+            op.amount.len() == 8,
+            "expected amount in u64 little endian bytes {}",
+            op.amount.len()
+        );
+
+        amount_bytes.copy_from_slice(&op.amount);
+
         Ok(Self {
             id: op.id,
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.parse()?,
-            amount: op.amount,
+            amount: u64::from_le_bytes(amount_bytes),
             operation_type: op.operation_type.0,
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,
@@ -117,7 +127,7 @@ pub async fn add_operation<'e>(
     request_id: Option<&str>,
     address: &str,
     denom: &Identifier,
-    amount: String,
+    amount: u64,
     operation_type: &OperationType,
     transaction_hash: &str,
 ) -> Result<()> {
@@ -129,7 +139,7 @@ pub async fn add_operation<'e>(
     .bind(request_id)
     .bind(address)
     .bind(denom.to_string())
-    .bind(amount)
+    .bind(amount.to_le_bytes().to_vec())
     .bind(operation_type)
     .bind(transaction_hash)
     .execute(executor)

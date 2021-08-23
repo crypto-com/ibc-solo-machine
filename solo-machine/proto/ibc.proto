@@ -105,7 +105,7 @@ message Operation {
     // Denom of account
     string denom = 4;
     // Amount associated with operation
-    string amount = 5;
+    uint64 amount = 5;
     // Type of operation (e.g., mint, burn, send, receive)
     string operation_type = 6;
     // On-chain transaction hash (in hex)

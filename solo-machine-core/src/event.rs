@@ -28,7 +28,7 @@ pub enum Event {
         /// Address of account on IBC enabled chain
         to_address: String,
         /// Amount of tokens minted
-        amount: String,
+        amount: u64,
         /// Denom of tokens minted
         denom: Identifier,
         /// Hash of transaction on IBC enabled chain (in hex)
@@ -43,7 +43,7 @@ pub enum Event {
         /// Address of account on IBC enabled chain
         from_address: String,
         /// Amount of tokens minted
-        amount: String,
+        amount: u64,
         /// Denom of tokens minted
         denom: Identifier,
         /// Hash of transaction on IBC enabled chain (in hex)
