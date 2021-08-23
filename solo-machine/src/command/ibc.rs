@@ -38,7 +38,7 @@ pub enum IbcCommand {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to send to IBC enabled chain
-        amount: u32,
+        amount: u64,
         /// Denom of tokens to send to IBC enabled chain
         denom: Identifier,
         /// Optional receiver address (if this is not provided, tokens will be sent to signer's address)
@@ -60,7 +60,7 @@ pub enum IbcCommand {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to receive from IBC enabled chain
-        amount: u32,
+        amount: u64,
         /// Denom of tokens to receive from IBC enabled chain
         denom: Identifier,
         /// Optional memo to include in transactions

@@ -40,7 +40,7 @@ message MintRequest {
     // Memo value to be used in cosmos sdk transaction
     optional string memo = 3;
     // Amount of tokens to be sent
-    uint32 amount = 4;
+    uint64 amount = 4;
     // Denom of tokens to be sent
     string denom = 5;
     // Receiver address on IBC enabled chain (if this is not provided, tokens will be sent to signer's address)
@@ -60,7 +60,7 @@ message BurnRequest {
     // Memo value to be used in cosmos sdk transaction
     optional string memo = 3;
     // Amount of tokens to be sent
-    uint32 amount = 4;
+    uint64 amount = 4;
     // Denom of tokens to be sent
     string denom = 5;
 }
@@ -105,7 +105,7 @@ message Operation {
     // Denom of account
     string denom = 4;
     // Amount associated with operation
-    uint32 amount = 5;
+    string amount = 5;
     // Type of operation (e.g., mint, burn, send, receive)
     string operation_type = 6;
     // On-chain transaction hash (in hex)
