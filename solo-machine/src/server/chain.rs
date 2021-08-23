@@ -172,7 +172,10 @@ where
                     .encode(),
             )
             .await
-            .map_err(|err| Status::internal(err.to_string()))?
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?
             .to_string();
 
         Ok(Response::new(AddChainResponse { chain_id }))
@@ -193,7 +196,10 @@ where
             .core_service
             .get(&chain_id)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?
             .ok_or_else(|| Status::not_found("chain details not found"))?;
 
         let response = QueryChainResponse {
@@ -264,7 +270,10 @@ where
             .core_service
             .get_ibc_denom(&chain_id, &denom)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?;
 
         let response = GetIbcDenomResponse { ibc_denom };
 
@@ -291,7 +300,10 @@ where
             .core_service
             .balance(&self.signer, &chain_id, &denom)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?
             .to_string();
 
         let response = QueryBalanceResponse { balance };

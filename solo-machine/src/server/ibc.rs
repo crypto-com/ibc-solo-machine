@@ -54,7 +54,10 @@ where
         self.core_service
             .connect(&self.signer, chain_id, memo, force)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?;
 
         Ok(Response::new(ConnectResponse {}))
     }
@@ -87,7 +90,10 @@ where
                 memo,
             )
             .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?;
 
         Ok(Response::new(MintResponse { transaction_hash }))
     }
@@ -111,7 +117,10 @@ where
             .core_service
             .burn(&self.signer, chain_id, request_id, amount, denom, memo)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?;
 
         Ok(Response::new(BurnResponse { transaction_hash }))
     }
@@ -151,7 +160,10 @@ where
         self.core_service
             .update_signer(&self.signer, chain_id, new_public_key, memo)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?;
 
         Ok(Response::new(UpdateSignerResponse {}))
     }
@@ -169,7 +181,10 @@ where
             .core_service
             .history(&self.signer, limit, offset)
             .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+            .map_err(|err| {
+                log::error!("{}", err);
+                Status::internal(err.to_string())
+            })?;
 
         let response = QueryHistoryResponse {
             operations: history

@@ -16,7 +16,7 @@ use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::{
-    event::{cli_event_handler::CliEventHandler, HandlerRegistrar},
+    event::{cli_event_handler::CliEventHandler, env_logger::EnvLogger, HandlerRegistrar},
     server::start_grpc,
     signer::SignerRegistrar,
 };
@@ -174,7 +174,8 @@ impl Command {
                 ensure!(self.db_uri.is_some(), "`db-uri` is required");
 
                 let db_pool = connect_db(&self.db_uri.unwrap()).await?;
-                let handler_registrar = HandlerRegistrar::try_from(self.handler)?;
+                let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
+                handler_registrar.register(Box::new(EnvLogger::new()));
                 let (sender, handle) = handler_registrar.spawn();
 
                 let signer = SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?;

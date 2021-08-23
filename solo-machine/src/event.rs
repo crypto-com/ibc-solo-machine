@@ -1,4 +1,5 @@
 pub mod cli_event_handler;
+pub mod env_logger;
 
 use std::{convert::TryFrom, ffi::OsStr, path::PathBuf};
 

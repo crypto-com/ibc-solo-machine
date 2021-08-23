@@ -23,6 +23,8 @@ pub async fn start_grpc(
     let chain_service = ChainService::new(db_pool.clone(), sender.clone(), signer.clone());
     let ibc_service = IbcService::new(db_pool, sender, signer);
 
+    log::info!("starting grpc server at {}", addr);
+
     GrpcServer::builder()
         .timeout(Duration::from_secs(60))
         .add_service(ChainServer::new(chain_service))
