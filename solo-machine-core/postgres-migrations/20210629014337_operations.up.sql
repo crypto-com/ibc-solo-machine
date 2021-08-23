@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS operations (
     request_id TEXT,
     address TEXT NOT NULL,
     denom TEXT NOT NULL,
-    amount BIGINT NOT NULL,
+    amount BYTEA NOT NULL,
     operation_type JSONB NOT NULL,
     transaction_hash TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP

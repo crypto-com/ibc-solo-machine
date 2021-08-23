@@ -346,7 +346,7 @@ pub async fn msg_token_send<C>(
     signer: impl Signer,
     rpc_client: &C,
     chain: &mut Chain,
-    amount: u32,
+    amount: u64,
     denom: &Identifier,
     receiver: String,
     memo: String,
@@ -366,7 +366,7 @@ where
 
     let packet_data = TokenTransferPacketData {
         denom: denom.to_string(),
-        amount: amount.into(),
+        amount,
         sender: sender.clone(),
         receiver,
     };
@@ -407,7 +407,7 @@ where
 pub async fn msg_token_receive(
     signer: impl Signer,
     chain: &Chain,
-    amount: u32,
+    amount: u64,
     denom: &Identifier,
     receiver: String,
     memo: String,

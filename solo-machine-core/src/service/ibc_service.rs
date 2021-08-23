@@ -276,7 +276,7 @@ impl IbcService {
         signer: impl Signer,
         chain_id: ChainId,
         request_id: Option<String>,
-        amount: u32,
+        amount: u64,
         denom: Identifier,
         receiver: Option<String>,
         memo: String,
@@ -376,7 +376,7 @@ impl IbcService {
         signer: impl Signer,
         chain_id: ChainId,
         request_id: Option<String>,
-        amount: u32,
+        amount: u64,
         denom: Identifier,
         memo: String,
     ) -> Result<String> {
