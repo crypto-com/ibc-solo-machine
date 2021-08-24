@@ -1,7 +1,7 @@
 // Copyright (c) 2021 Tharsis (https://github.com/tharsis/ethermint) (licensed under the Apache License, Version 2.0)
 // Modifications Copyright (c) 2021, Foris Limited ("Crypto.com") (licensed under the Apache License, Version 2.0)
 syntax = "proto3";
-package ethermint.types.v1alpha1;
+package ethermint.types.v1;
 
 import "cosmos/auth/v1beta1/auth.proto";
 import "cosmos_proto/cosmos.proto";

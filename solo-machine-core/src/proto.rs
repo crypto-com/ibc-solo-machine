@@ -26,15 +26,15 @@ pub mod cosmos {
 #[cfg(feature = "ethermint")]
 pub mod ethermint {
     pub mod types {
-        pub mod v1alpha1 {
-            tonic::include_proto!("ethermint.types.v1alpha1");
+        pub mod v1 {
+            tonic::include_proto!("ethermint.types.v1");
         }
     }
 
     pub mod crypto {
-        pub mod v1alpha1 {
+        pub mod v1 {
             pub mod ethsecp256k1 {
-                tonic::include_proto!("ethermint.crypto.v1alpha1.ethsecp256k1");
+                tonic::include_proto!("ethermint.crypto.v1.ethsecp256k1");
             }
         }
     }
