@@ -1,8 +1,8 @@
 use cosmos_sdk_proto::cosmos::auth::v1beta1::BaseAccount;
 
-pub use crate::proto::ethermint::types::v1alpha1::EthAccount;
+pub use crate::proto::ethermint::types::v1::EthAccount;
 
-pub const TYPE_URL: &str = "/ethermint.types.v1alpha1.EthAccount";
+pub const TYPE_URL: &str = "/ethermint.types.v1.EthAccount";
 
 impl_any_conversion!(EthAccount, TYPE_URL);
 

@@ -26,7 +26,7 @@ use sha2::Sha256;
 use sha3::Keccak256;
 
 #[cfg(feature = "ethermint")]
-use crate::proto::ethermint::crypto::v1alpha1::ethsecp256k1::PubKey as EthSecp256k1PubKey;
+use crate::proto::ethermint::crypto::v1::ethsecp256k1::PubKey as EthSecp256k1PubKey;
 use crate::proto::{
     cosmos::crypto::{
         ed25519::PubKey as Ed25519PubKey, multisig::LegacyAminoPubKey,

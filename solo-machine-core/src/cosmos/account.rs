@@ -11,7 +11,7 @@ use prost::Message;
 use prost_types::Any;
 
 #[cfg(feature = "ethermint")]
-use crate::proto::ethermint::types::v1alpha1::EthAccount;
+use crate::proto::ethermint::types::v1::EthAccount;
 use crate::proto::AnyConvert;
 
 use self::base_account::TYPE_URL as BASE_ACCOUNT_TYPE_URL;

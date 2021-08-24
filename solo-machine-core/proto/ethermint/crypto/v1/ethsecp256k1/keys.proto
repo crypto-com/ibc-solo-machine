@@ -1,7 +1,7 @@
 // Copyright (c) 2021 Tharsis (https://github.com/tharsis/ethermint) (licensed under the Apache License, Version 2.0)
 // Modifications Copyright (c) 2021, Foris Limited ("Crypto.com") (licensed under the Apache License, Version 2.0)
 syntax = "proto3";
-package ethermint.crypto.v1alpha1.ethsecp256k1;
+package ethermint.crypto.v1.ethsecp256k1;
 
 import "gogoproto/gogo.proto";
 
