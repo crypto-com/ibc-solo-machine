@@ -57,7 +57,7 @@ use cosmos_sdk_proto::{
     },
 };
 use prost_types::{Any, Duration};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use sqlx::{Executor, Transaction};
 use tendermint::block::Header;
@@ -366,7 +366,7 @@ where
 
     let packet_data = TokenTransferPacketData {
         denom: denom.to_string(),
-        amount,
+        amount: amount.to_string(),
         sender: sender.clone(),
         receiver,
     };
@@ -972,10 +972,12 @@ fn to_u64_timestamp(timestamp: DateTime<Utc>) -> Result<u64> {
         .context("unable to convert unix timestamp to u64")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct TokenTransferPacketData {
     pub denom: String,
-    pub amount: u64,
+    // Ideally `amount` should be `u64` but `ibc-go` uses `protojson` which encodes `uint64` into `string`. So, using
+    // `String` here to keep consistent wire format.
+    pub amount: String,
     pub sender: String,
     pub receiver: String,
 }
