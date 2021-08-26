@@ -48,8 +48,8 @@ jobs:
       - name: Prepare release on windows
         if: matrix.os == 'windows-latest'
         run: |
-          cp ./target/release/libmnemonic_signer.dll ./release/${{ matrix.os }}/
-          cp ./target/release/libstdout_logger.dll ./release/${{ matrix.os }}/
+          cp ./target/release/mnemonic_signer.dll ./release/${{ matrix.os }}/
+          cp ./target/release/stdout_logger.dll ./release/${{ matrix.os }}/
           cp ./target/release/solo-machine.exe ./release/${{ matrix.os }}/
           Compress-Archive -Path ./release/${{ matrix.os }}/* -DestinationPath ./release/${{ matrix.os }}-${{ steps.get_version.outputs.version }}.zip
       - name: Cleanup
