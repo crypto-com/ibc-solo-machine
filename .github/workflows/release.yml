@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    name: Release
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Get version
+        id: get_version
+        uses: battila7/get-version-action@v2
+      - name: Make release folder
+        run: mkdir -p ./release/${{ matrix.os }}
+      - name: Prepare release on ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cp ./target/release/libmnemonic_signer.so ./release/${{ matrix.os }}/
+          cp ./target/release/libstdout_logger.so ./release/${{ matrix.os }}/
+          cp ./target/release/solo-machine ./release/${{ matrix.os }}/
+          tar -C ./release/${{ matrix.os }}/ -czvf ./release/${{ matrix.os }}-${{ steps.get_version.outputs.version }}.tar.gz .
+      - name: Prepare release on macos
+        if: matrix.os == 'macos-latest'
+        run: |
+          cp ./target/release/libmnemonic_signer.dylib ./release/${{ matrix.os }}/
+          cp ./target/release/libstdout_logger.dylib ./release/${{ matrix.os }}/
+          cp ./target/release/solo-machine ./release/${{ matrix.os }}/
+          tar -C ./release/${{ matrix.os }}/ -czvf ./release/${{ matrix.os }}-${{ steps.get_version.outputs.version }}.tar.gz .
+      - name: Prepare release on windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          cp ./target/release/libmnemonic_signer.dll ./release/${{ matrix.os }}/
+          cp ./target/release/libstdout_logger.dll ./release/${{ matrix.os }}/
+          cp ./target/release/solo-machine.exe ./release/${{ matrix.os }}/
+          Compress-Archive -Path ./release/${{ matrix.os }}/* -DestinationPath ./release/${{ matrix.os }}-${{ steps.get_version.outputs.version }}.zip
+      - name: Cleanup
+        run: rm -r ./release/${{ matrix.os }}
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./release/*
