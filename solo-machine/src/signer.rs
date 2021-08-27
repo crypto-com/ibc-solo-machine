@@ -36,7 +36,7 @@ impl SignerRegistrar {
                     .get("register_signer".as_bytes())
                     .context("unable to load `register_signer` function from signer")?;
 
-            register_fn(self)?;
+            register_fn(self).context("unable to register signer")?;
         }
 
         Ok(())
