@@ -1,5 +1,5 @@
 /target
 demo
 solo-machine.db*
-*.env
+.env
 .idea/

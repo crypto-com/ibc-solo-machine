@@ -58,7 +58,7 @@ impl HandlerRegistrar {
                 .get("register_handler".as_bytes())
                 .context("unable to load `register_handler` function from event hook")?;
 
-            register_fn(self)?;
+            register_fn(self).context("unable to register event handler")?;
         }
 
         Ok(())
