@@ -24,14 +24,14 @@ num-rational = "0.4.0"
 prost = "0.7.0"
 prost-types = "0.7.0"
 rust_decimal = "1.15.0"
-serde_json = "1.0.66"
+serde_json = "1.0.67"
 solo-machine-core = { path = "../solo-machine-core", features = [
     "solomachine-v2",
 ] }
-structopt = "0.3.22"
+structopt = "0.3.23"
 tendermint = "0.21.0"
 termcolor = "1.1.2"
-tokio = { version = "1.10.1", features = ["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1.11.0", features = ["fs", "macros", "rt-multi-thread"] }
 tonic = { version = "0.4.3", features = ["tls", "tls-roots"] }
 
 [features]

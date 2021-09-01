@@ -24,10 +24,12 @@ service Ibc {
 message ConnectRequest {
     // Chain ID of IBC enabled chain to connect to
     string chain_id = 1;
+    // An optional request ID for tracking purposes
+    optional string request_id = 2;
     // Memo value to be used in cosmos sdk transaction
-    optional string memo = 2;
+    optional string memo = 3;
     // Force create a new connection even if one already exists
-    bool force = 3;
+    bool force = 4;
 }
 
 message ConnectResponse {}
@@ -73,12 +75,14 @@ message BurnResponse {
 message UpdateSignerRequest {
     // Chain ID of IBC enabled chain
     string chain_id = 1;
+    // An optional request ID for tracking purposes
+    optional string request_id = 2;
     // Memo value to be used in cosmos sdk transaction
-    optional string memo = 2;
+    optional string memo = 3;
     // Hex encoded public key
-    string new_public_key = 3;
+    string new_public_key = 4;
     // Type of public key
-    optional string public_key_algo = 4;
+    optional string public_key_algo = 5;
 }
 
 message UpdateSignerResponse {}

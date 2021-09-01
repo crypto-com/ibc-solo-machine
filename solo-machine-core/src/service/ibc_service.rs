@@ -76,6 +76,7 @@ impl IbcService {
         &self,
         signer: impl Signer,
         chain_id: ChainId,
+        request_id: Option<String>,
         memo: String,
         force: bool,
     ) -> Result<()> {
@@ -101,8 +102,14 @@ impl IbcService {
         let mut instance =
             prepare_light_client(&chain, rpc_client.clone(), Box::new(MemoryStore::new()))?;
 
-        let solo_machine_client_id =
-            create_solo_machine_client(&signer, &rpc_client, &chain, memo.clone()).await?;
+        let solo_machine_client_id = create_solo_machine_client(
+            &signer,
+            &rpc_client,
+            &chain,
+            memo.clone(),
+            request_id.as_deref(),
+        )
+        .await?;
 
         notify_event(
             &self.notifier,
@@ -128,6 +135,7 @@ impl IbcService {
             &solo_machine_client_id,
             &tendermint_client_id,
             memo.clone(),
+            request_id.as_deref(),
         )
         .await?;
 
@@ -162,6 +170,7 @@ impl IbcService {
             &tendermint_client_id,
             &tendermint_connection_id,
             memo.clone(),
+            request_id.as_deref(),
         )
         .await?;
 
@@ -187,6 +196,7 @@ impl IbcService {
             &chain,
             &solo_machine_connection_id,
             memo.clone(),
+            request_id.as_deref(),
         )
         .await?;
 
@@ -220,6 +230,7 @@ impl IbcService {
             &solo_machine_channel_id,
             &tendermint_channel_id,
             memo,
+            request_id.as_deref(),
         )
         .await?;
 
@@ -488,6 +499,7 @@ impl IbcService {
         &self,
         signer: impl Signer,
         chain_id: ChainId,
+        request_id: Option<String>,
         new_public_key: PublicKey,
         memo: String,
     ) -> Result<()> {
@@ -512,6 +524,7 @@ impl IbcService {
             &mut chain,
             Some(&new_public_key),
             memo.clone(),
+            request_id.as_deref(),
         )
         .await?;
 
@@ -621,11 +634,13 @@ async fn create_solo_machine_client<C>(
     rpc_client: &C,
     chain: &Chain,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<ClientId>
 where
     C: Client + Send + Sync,
 {
-    let msg = transaction_builder::msg_create_solo_machine_client(signer, chain, memo).await?;
+    let msg = transaction_builder::msg_create_solo_machine_client(signer, chain, memo, request_id)
+        .await?;
 
     let response = rpc_client
         .broadcast_tx_commit(proto_encode(&msg)?.into())
@@ -669,6 +684,7 @@ async fn connection_open_init<C>(
     solo_machine_client_id: &ClientId,
     tendermint_client_id: &ClientId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<ConnectionId>
 where
     C: Client + Send + Sync,
@@ -679,6 +695,7 @@ where
         solo_machine_client_id,
         tendermint_client_id,
         memo,
+        request_id,
     )
     .await?;
 
@@ -736,6 +753,7 @@ async fn connection_open_ack<C>(
     tendermint_client_id: &ClientId,
     tendermint_connection_id: &ConnectionId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<()>
 where
     C: Client + Send + Sync,
@@ -748,6 +766,7 @@ where
         tendermint_client_id,
         tendermint_connection_id,
         memo,
+        request_id,
     )
     .await?;
 
@@ -778,13 +797,19 @@ async fn channel_open_init<C>(
     chain: &Chain,
     solo_machine_connection_id: &ConnectionId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<ChannelId>
 where
     C: Client + Send + Sync,
 {
-    let msg =
-        transaction_builder::msg_channel_open_init(signer, chain, solo_machine_connection_id, memo)
-            .await?;
+    let msg = transaction_builder::msg_channel_open_init(
+        signer,
+        chain,
+        solo_machine_connection_id,
+        memo,
+        request_id,
+    )
+    .await?;
 
     let response = rpc_client
         .broadcast_tx_commit(proto_encode(&msg)?.into())
@@ -824,6 +849,7 @@ async fn channel_open_try<'e>(
     Ok(channel_id)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn channel_open_ack<C>(
     transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
@@ -832,6 +858,7 @@ async fn channel_open_ack<C>(
     solo_machine_channel_id: &ChannelId,
     tendermint_channel_id: &ChannelId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<()>
 where
     C: Client + Send + Sync,
@@ -843,6 +870,7 @@ where
         solo_machine_channel_id,
         tendermint_channel_id,
         memo,
+        request_id,
     )
     .await?;
 
