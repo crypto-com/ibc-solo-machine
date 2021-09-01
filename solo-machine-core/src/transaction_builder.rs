@@ -94,6 +94,7 @@ pub async fn msg_create_solo_machine_client(
     signer: impl Signer,
     chain: &Chain,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let any_public_key = signer.to_public_key()?.to_any()?;
 
@@ -121,7 +122,7 @@ pub async fn msg_create_solo_machine_client(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo, None).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 /// Builds a transaction to update solo machine client on IBC enabled chain
@@ -131,6 +132,7 @@ pub async fn msg_update_solo_machine_client<'e>(
     chain: &mut Chain,
     new_public_key: Option<&PublicKey>,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     if chain.connection_details.is_none() {
         bail!(
@@ -151,6 +153,7 @@ pub async fn msg_update_solo_machine_client<'e>(
         chain,
         Some(any_public_key.clone()),
         chain.config.diversifier.clone(),
+        request_id,
     )
     .await?;
 
@@ -179,7 +182,7 @@ pub async fn msg_update_solo_machine_client<'e>(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo, None).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 /// Builds a transaction to create a tendermint client on IBC enabled solo machine
@@ -221,6 +224,7 @@ pub async fn msg_connection_open_init(
     solo_machine_client_id: &ClientId,
     tendermint_client_id: &ClientId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let message = MsgConnectionOpenInit {
         client_id: solo_machine_client_id.to_string(),
@@ -239,9 +243,10 @@ pub async fn msg_connection_open_init(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo, None).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn msg_connection_open_ack(
     transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
@@ -250,6 +255,7 @@ pub async fn msg_connection_open_ack(
     tendermint_client_id: &ClientId,
     tendermint_connection_id: &ConnectionId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let tendermint_client_state =
         ibc_handler::get_tendermint_client_state(&mut *transaction, tendermint_client_id)
@@ -258,16 +264,34 @@ pub async fn msg_connection_open_ack(
 
     let proof_height = Height::new(0, chain.sequence.into());
 
-    let proof_try =
-        get_connection_proof(&mut *transaction, &signer, chain, tendermint_connection_id).await?;
+    let proof_try = get_connection_proof(
+        &mut *transaction,
+        &signer,
+        chain,
+        tendermint_connection_id,
+        request_id,
+    )
+    .await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
-    let proof_client =
-        get_client_proof(&mut *transaction, &signer, chain, tendermint_client_id).await?;
+    let proof_client = get_client_proof(
+        &mut *transaction,
+        &signer,
+        chain,
+        tendermint_client_id,
+        request_id,
+    )
+    .await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
-    let proof_consensus =
-        get_consensus_proof(&mut *transaction, &signer, chain, tendermint_client_id).await?;
+    let proof_consensus = get_consensus_proof(
+        &mut *transaction,
+        &signer,
+        chain,
+        tendermint_client_id,
+        request_id,
+    )
+    .await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgConnectionOpenAck {
@@ -286,7 +310,7 @@ pub async fn msg_connection_open_ack(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo, None).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 pub async fn msg_channel_open_init(
@@ -294,6 +318,7 @@ pub async fn msg_channel_open_init(
     chain: &Chain,
     solo_machine_connection_id: &ConnectionId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let message = MsgChannelOpenInit {
         port_id: chain.config.port_id.to_string(),
@@ -310,7 +335,7 @@ pub async fn msg_channel_open_init(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo, None).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 pub async fn msg_channel_open_ack(
@@ -320,11 +345,18 @@ pub async fn msg_channel_open_ack(
     solo_machine_channel_id: &ChannelId,
     tendermint_channel_id: &ChannelId,
     memo: String,
+    request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let proof_height = Height::new(0, chain.sequence.into());
 
-    let proof_try =
-        get_channel_proof(&mut *transaction, &signer, chain, tendermint_channel_id).await?;
+    let proof_try = get_channel_proof(
+        &mut *transaction,
+        &signer,
+        chain,
+        tendermint_channel_id,
+        request_id,
+    )
+    .await?;
     *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
 
     let message = MsgChannelOpenAck {
@@ -337,7 +369,7 @@ pub async fn msg_channel_open_ack(
         signer: signer.to_account_address()?,
     };
 
-    build(signer, chain, &[message], memo, None).await
+    build(signer, chain, &[message], memo, request_id).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -763,6 +795,7 @@ async fn get_channel_proof<'e>(
     signer: impl Signer,
     chain: &Chain,
     channel_id: &ChannelId,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let channel = ibc_handler::get_channel(executor, &chain.config.port_id, channel_id)
         .await?
@@ -792,7 +825,7 @@ async fn get_channel_proof<'e>(
         data: channel_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes, None).await
+    timestamped_sign(signer, chain, sign_bytes, request_id).await
 }
 
 async fn get_connection_proof<'e>(
@@ -800,6 +833,7 @@ async fn get_connection_proof<'e>(
     signer: impl Signer,
     chain: &Chain,
     connection_id: &ConnectionId,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let connection = ibc_handler::get_connection(executor, connection_id)
         .await?
@@ -823,7 +857,7 @@ async fn get_connection_proof<'e>(
         data: connection_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes, None).await
+    timestamped_sign(signer, chain, sign_bytes, request_id).await
 }
 
 async fn get_client_proof<'e>(
@@ -831,6 +865,7 @@ async fn get_client_proof<'e>(
     signer: impl Signer,
     chain: &Chain,
     client_id: &ClientId,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let client_state = ibc_handler::get_tendermint_client_state(executor, client_id)
         .await?
@@ -855,7 +890,7 @@ async fn get_client_proof<'e>(
         data: client_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes, None).await
+    timestamped_sign(signer, chain, sign_bytes, request_id).await
 }
 
 async fn get_consensus_proof(
@@ -863,6 +898,7 @@ async fn get_consensus_proof(
     signer: impl Signer,
     chain: &Chain,
     client_id: &ClientId,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let client_state = ibc_handler::get_tendermint_client_state(&mut *transaction, client_id)
         .await?
@@ -902,7 +938,7 @@ async fn get_consensus_proof(
         data: consensus_state_data_bytes,
     };
 
-    timestamped_sign(signer, chain, sign_bytes, None).await
+    timestamped_sign(signer, chain, sign_bytes, request_id).await
 }
 
 async fn get_header_proof(
@@ -910,6 +946,7 @@ async fn get_header_proof(
     chain: &Chain,
     new_public_key: Option<Any>,
     new_diversifier: String,
+    request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
     let header_data = HeaderData {
         new_pub_key: new_public_key,
@@ -926,7 +963,7 @@ async fn get_header_proof(
         data: header_data_bytes,
     };
 
-    sign(signer, None, sign_bytes).await
+    sign(signer, request_id, sign_bytes).await
 }
 
 async fn timestamped_sign(

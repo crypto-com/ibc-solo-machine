@@ -29,6 +29,9 @@ pub enum IbcCommand {
             hide_env_values = true
         )]
         memo: String,
+        /// Optional request ID (for tracking purposes)
+        #[structopt(long)]
+        request_id: Option<String>,
         /// Force create a new connection even if one already exists
         #[structopt(long)]
         force: bool,
@@ -93,6 +96,9 @@ pub enum IbcCommand {
             hide_env_values = true
         )]
         memo: String,
+        /// Optional request ID (for tracking purposes)
+        #[structopt(long)]
+        request_id: Option<String>,
     },
     /// Check history of operations on solo machine
     History {
@@ -117,8 +123,13 @@ impl IbcCommand {
             Self::Connect {
                 chain_id,
                 memo,
+                request_id,
                 force,
-            } => ibc_service.connect(signer, chain_id, memo, force).await,
+            } => {
+                ibc_service
+                    .connect(signer, chain_id, request_id, memo, force)
+                    .await
+            }
             Self::Mint {
                 chain_id,
                 amount,
@@ -145,6 +156,7 @@ impl IbcCommand {
                 new_public_key,
                 public_key_algo,
                 memo,
+                request_id,
             } => {
                 let new_public_key_bytes =
                     hex::decode(&new_public_key).context("unable to decode hex bytes")?;
@@ -159,7 +171,7 @@ impl IbcCommand {
                 };
 
                 ibc_service
-                    .update_signer(signer, chain_id, new_public_key, memo)
+                    .update_signer(signer, chain_id, request_id, new_public_key, memo)
                     .await
             }
             Self::History { limit, offset } => {

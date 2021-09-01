@@ -49,10 +49,11 @@ where
             .parse()
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
+        let request_id = request.request_id;
         let force = request.force;
 
         self.core_service
-            .connect(&self.signer, chain_id, memo, force)
+            .connect(&self.signer, chain_id, request_id, memo, force)
             .await
             .map_err(|err| {
                 log::error!("{}", err);
@@ -136,6 +137,8 @@ where
             .parse()
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
 
+        let request_id = request.request_id;
+
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
 
         let new_public_key_bytes = hex::decode(&request.new_public_key)
@@ -158,7 +161,7 @@ where
         };
 
         self.core_service
-            .update_signer(&self.signer, chain_id, new_public_key, memo)
+            .update_signer(&self.signer, chain_id, request_id, new_public_key, memo)
             .await
             .map_err(|err| {
                 log::error!("{}", err);
