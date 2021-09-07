@@ -248,5 +248,6 @@ pub(crate) fn print_stream(
 
 pub(crate) fn print_json(color_choice: ColorChoice, json: impl Display) -> Result<()> {
     let mut stdout = StandardStream::stdout(color_choice);
-    print_stream(&mut stdout, &ColorSpec::new(), json)
+    writeln!(stdout, "{:#}", json).context("unable to write to stdout")?;
+    stdout.reset().context("unable to reset stdout")
 }
