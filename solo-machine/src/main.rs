@@ -1,9 +1,11 @@
 use anyhow::Result;
-use command::Command;
 use structopt::StructOpt;
+
+use self::command::Command;
 
 mod command;
 mod event;
+mod output;
 mod server;
 mod signer;
 

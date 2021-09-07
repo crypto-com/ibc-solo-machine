@@ -11,12 +11,14 @@ use std::{
 
 use anyhow::{ensure, Context, Result};
 use cli_table::{Cell, Row, RowStruct, Style};
+use serde_json::json;
 use solo_machine_core::{connect_db, event::HandlerRegistrar as _, init_db, run_migrations};
 use structopt::{clap::Shell, StructOpt};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use crate::{
     event::{cli_event_handler::CliEventHandler, env_logger::EnvLogger, HandlerRegistrar},
+    output::OutputType,
     server::start_grpc,
     signer::SignerRegistrar,
 };
@@ -53,6 +55,9 @@ pub struct Command {
     handler: Vec<PathBuf>,
     #[structopt(subcommand)]
     subcommand: SubCommand,
+    /// Output format
+    #[structopt(long, env = "SOLO_OUTPUT", hide_env_values = true, default_value = "text", possible_values = &["text", "json"])]
+    output: OutputType,
 }
 
 #[derive(Debug, StructOpt)]
@@ -97,6 +102,28 @@ impl Command {
             ColorChoice::Auto
         };
 
+        let output = self.output;
+
+        if let Err(err) = self.run(color_choice).await {
+            match output {
+                OutputType::Text => {
+                    let mut stdout = StandardStream::stdout(color_choice);
+                    print_stream(&mut stdout, &ColorSpec::new(), format!("{:?}", err))?;
+                }
+                OutputType::Json => print_json(
+                    color_choice,
+                    json!({
+                        "result": "error",
+                        "data": err.to_string(),
+                    }),
+                )?,
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run(self, color_choice: ColorChoice) -> Result<()> {
         match self.subcommand {
             SubCommand::Chain(chain) => {
                 ensure!(
@@ -108,14 +135,15 @@ impl Command {
                 let db_pool = connect_db(&self.db_uri.unwrap()).await?;
 
                 let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
-                handler_registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                handler_registrar
+                    .register(Box::new(CliEventHandler::new(color_choice, self.output)));
                 let (sender, handle) = handler_registrar.spawn();
 
                 let signer = SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?;
 
                 chain
                     .subcommand
-                    .execute(db_pool, signer, sender, color_choice)
+                    .execute(db_pool, signer, sender, color_choice, self.output)
                     .await?;
 
                 handle
@@ -136,13 +164,14 @@ impl Command {
                 let db_pool = connect_db(&self.db_uri.unwrap()).await?;
 
                 let mut handler_registrar = HandlerRegistrar::try_from(self.handler)?;
-                handler_registrar.register(Box::new(CliEventHandler::new(color_choice)));
+                handler_registrar
+                    .register(Box::new(CliEventHandler::new(color_choice, self.output)));
                 let (sender, handle) = handler_registrar.spawn();
 
                 let signer = SignerRegistrar::try_from(self.signer.unwrap())?.unwrap()?;
 
                 ibc.subcommand
-                    .execute(db_pool, signer, sender, color_choice)
+                    .execute(db_pool, signer, sender, color_choice, self.output)
                     .await?;
 
                 handle
@@ -159,12 +188,23 @@ impl Command {
 
                 run_migrations(&db_pool).await?;
 
-                let mut stdout = StandardStream::stdout(color_choice);
-                print_stream(
-                    &mut stdout,
-                    ColorSpec::new().set_bold(true),
-                    "Initialized solo machine!",
-                )
+                match self.output {
+                    OutputType::Text => {
+                        let mut stdout = StandardStream::stdout(color_choice);
+                        print_stream(
+                            &mut stdout,
+                            ColorSpec::new().set_bold(true),
+                            "Initialized solo machine!",
+                        )
+                    }
+                    OutputType::Json => print_json(
+                        color_choice,
+                        json!({
+                            "result": "success",
+                            "data": "Initialized solo machine!",
+                        }),
+                    ),
+                }
             }
             SubCommand::Start { addr } => {
                 ensure!(
@@ -194,7 +234,7 @@ fn add_row(table: &mut Vec<RowStruct>, title: &str, value: impl Display) {
     table.push(vec![title.cell().bold(true), value.cell()].row());
 }
 
-fn print_stream(
+pub(crate) fn print_stream(
     stdout: &mut StandardStream,
     color_spec: &ColorSpec,
     s: impl Display,
@@ -204,4 +244,10 @@ fn print_stream(
     stdout.reset().context("unable to reset stdout")?;
 
     Ok(())
+}
+
+pub(crate) fn print_json(color_choice: ColorChoice, json: impl Display) -> Result<()> {
+    let mut stdout = StandardStream::stdout(color_choice);
+    writeln!(stdout, "{:#}", json).context("unable to write to stdout")?;
+    stdout.reset().context("unable to reset stdout")
 }

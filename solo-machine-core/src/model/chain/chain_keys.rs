@@ -2,11 +2,13 @@ use std::convert::TryFrom;
 
 use anyhow::{ensure, Context, Error, Result};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::{Executor, FromRow};
 
 use crate::{ibc::core::ics24_host::identifier::ChainId, Db};
 
 /// Signer's public key entry for an IBC enabled chain
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChainKey {
     /// ID of key
     pub id: i64,
