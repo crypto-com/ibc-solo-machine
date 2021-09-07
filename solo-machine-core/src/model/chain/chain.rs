@@ -24,7 +24,7 @@ use crate::{
 };
 
 /// State of an IBC enabled chain
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Chain {
     /// ID of chain
     pub id: ChainId,

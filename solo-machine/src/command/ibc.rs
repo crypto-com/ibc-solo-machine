@@ -3,6 +3,7 @@ use cli_table::{
     format::Justify, print_stdout, Cell, Color, ColorChoice, Row, RowStruct, Style, Table,
 };
 use k256::ecdsa::VerifyingKey;
+use serde_json::json;
 use solo_machine_core::{
     cosmos::crypto::{PublicKey, PublicKeyAlgo},
     ibc::core::ics24_host::identifier::{ChainId, Identifier},
@@ -12,6 +13,10 @@ use solo_machine_core::{
 };
 use structopt::StructOpt;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::output::OutputType;
+
+use super::print_json;
 
 const PUBLIC_KEY_ALGO_VARIANTS: [&str; 2] = ["secp256k1", "eth-secp256k1"];
 
@@ -116,6 +121,7 @@ impl IbcCommand {
         signer: impl Signer,
         sender: UnboundedSender<Event>,
         color_choice: ColorChoice,
+        output: OutputType,
     ) -> Result<()> {
         let ibc_service = IbcService::new_with_notifier(db_pool, sender);
 
@@ -177,24 +183,35 @@ impl IbcCommand {
             Self::History { limit, offset } => {
                 let history = ibc_service.history(signer, limit, offset).await?;
 
-                let table = history
-                    .into_iter()
-                    .map(into_row)
-                    .collect::<Vec<RowStruct>>()
-                    .table()
-                    .title(vec![
-                        "ID".cell().bold(true),
-                        "Request ID".cell().bold(true),
-                        "Address".cell().bold(true),
-                        "Denom".cell().bold(true),
-                        "Amount".cell().bold(true),
-                        "Type".cell().bold(true),
-                        "Transaction Hash".cell().bold(true),
-                        "Time".cell().bold(true),
-                    ])
-                    .color_choice(color_choice);
+                match output {
+                    OutputType::Text => {
+                        let table = history
+                            .into_iter()
+                            .map(into_row)
+                            .collect::<Vec<RowStruct>>()
+                            .table()
+                            .title(vec![
+                                "ID".cell().bold(true),
+                                "Request ID".cell().bold(true),
+                                "Address".cell().bold(true),
+                                "Denom".cell().bold(true),
+                                "Amount".cell().bold(true),
+                                "Type".cell().bold(true),
+                                "Transaction Hash".cell().bold(true),
+                                "Time".cell().bold(true),
+                            ])
+                            .color_choice(color_choice);
 
-                print_stdout(table).context("unable to print table to stdout")
+                        print_stdout(table).context("unable to print table to stdout")
+                    }
+                    OutputType::Json => print_json(
+                        color_choice,
+                        json!({
+                            "result": "success",
+                            "data": history,
+                        }),
+                    ),
+                }
             }
         }
     }

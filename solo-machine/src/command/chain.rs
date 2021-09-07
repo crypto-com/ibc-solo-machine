@@ -5,6 +5,7 @@ use cli_table::{format::Justify, print_stdout, Cell, Row, RowStruct, Style, Tabl
 use humantime::format_duration;
 use num_rational::Ratio;
 use rust_decimal::Decimal;
+use serde_json::json;
 use solo_machine_core::{
     ibc::core::ics24_host::identifier::{ChainId, Identifier, PortId},
     model::{ChainConfig, ChainKey, Fee},
@@ -16,7 +17,9 @@ use tendermint::block::Height as BlockHeight;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::command::add_row;
+use crate::{command::add_row, output::OutputType};
+
+use super::print_json;
 
 #[derive(Debug, StructOpt)]
 pub enum ChainCommand {
@@ -149,6 +152,7 @@ impl ChainCommand {
         signer: impl ToPublicKey,
         sender: UnboundedSender<Event>,
         color_choice: ColorChoice,
+        output: OutputType,
     ) -> Result<()> {
         let chain_service = ChainService::new_with_notifier(db_pool, sender);
 
@@ -195,112 +199,131 @@ impl ChainCommand {
                 let chain = chain_service.get(chain_id).await?;
 
                 match chain {
-                    None => {
-                        let mut stdout = StandardStream::stdout(color_choice);
-                        stdout
-                            .set_color(ColorSpec::new().set_bold(true).set_fg(Some(Color::Red)))?;
-                        writeln!(&mut stdout, "Chain with id `{}` not found!", chain_id)
-                            .context("unable to write to stdout")?;
-                        stdout.reset().context("unable to reset stdout")
-                    }
-                    Some(ref chain) => {
-                        let mut table = Vec::new();
+                    None => match output {
+                        OutputType::Text => {
+                            let mut stdout = StandardStream::stdout(color_choice);
+                            stdout.set_color(
+                                ColorSpec::new().set_bold(true).set_fg(Some(Color::Red)),
+                            )?;
+                            writeln!(&mut stdout, "Chain with id `{}` not found!", chain_id)
+                                .context("unable to write to stdout")?;
+                            stdout.reset().context("unable to reset stdout")
+                        }
+                        OutputType::Json => print_json(
+                            color_choice,
+                            json!({
+                                "result": "error",
+                                "data": format!("Chain with id `{}` not found!", chain_id)
+                            }),
+                        ),
+                    },
+                    Some(ref chain) => match output {
+                        OutputType::Text => {
+                            let mut table = Vec::new();
 
-                        add_row(&mut table, "ID", &chain.id);
-                        add_row(&mut table, "Node ID", &chain.node_id);
-                        add_row(&mut table, "gRPC address", &chain.config.grpc_addr);
-                        add_row(&mut table, "RPC address", &chain.config.rpc_addr);
-                        add_row(&mut table, "Fee amount", &chain.config.fee.amount);
-                        add_row(&mut table, "Fee denom", &chain.config.fee.denom);
-                        add_row(&mut table, "Gas limit", &chain.config.fee.gas_limit);
-                        add_row(&mut table, "Trust level", &chain.config.trust_level);
-                        add_row(
-                            &mut table,
-                            "Trusting period",
-                            format_duration(chain.config.trusting_period),
-                        );
-                        add_row(
-                            &mut table,
-                            "Maximum clock drift",
-                            format_duration(chain.config.max_clock_drift),
-                        );
-                        add_row(
-                            &mut table,
-                            "RPC timeout",
-                            format_duration(chain.config.rpc_timeout),
-                        );
-                        add_row(&mut table, "Diversifier", &chain.config.diversifier);
-                        add_row(&mut table, "Port ID", &chain.config.port_id);
-                        add_row(&mut table, "Trusted height", &chain.config.trusted_height);
-                        add_row(
-                            &mut table,
-                            "Trusted hash",
-                            hex::encode_upper(&chain.config.trusted_hash),
-                        );
-                        add_row(
-                            &mut table,
-                            "Consensus timestamp",
-                            &chain.consensus_timestamp,
-                        );
-                        add_row(&mut table, "Sequence", &chain.sequence);
-                        add_row(&mut table, "Packet sequence", &chain.packet_sequence);
+                            add_row(&mut table, "ID", &chain.id);
+                            add_row(&mut table, "Node ID", &chain.node_id);
+                            add_row(&mut table, "gRPC address", &chain.config.grpc_addr);
+                            add_row(&mut table, "RPC address", &chain.config.rpc_addr);
+                            add_row(&mut table, "Fee amount", &chain.config.fee.amount);
+                            add_row(&mut table, "Fee denom", &chain.config.fee.denom);
+                            add_row(&mut table, "Gas limit", &chain.config.fee.gas_limit);
+                            add_row(&mut table, "Trust level", &chain.config.trust_level);
+                            add_row(
+                                &mut table,
+                                "Trusting period",
+                                format_duration(chain.config.trusting_period),
+                            );
+                            add_row(
+                                &mut table,
+                                "Maximum clock drift",
+                                format_duration(chain.config.max_clock_drift),
+                            );
+                            add_row(
+                                &mut table,
+                                "RPC timeout",
+                                format_duration(chain.config.rpc_timeout),
+                            );
+                            add_row(&mut table, "Diversifier", &chain.config.diversifier);
+                            add_row(&mut table, "Port ID", &chain.config.port_id);
+                            add_row(&mut table, "Trusted height", &chain.config.trusted_height);
+                            add_row(
+                                &mut table,
+                                "Trusted hash",
+                                hex::encode_upper(&chain.config.trusted_hash),
+                            );
+                            add_row(
+                                &mut table,
+                                "Consensus timestamp",
+                                &chain.consensus_timestamp,
+                            );
+                            add_row(&mut table, "Sequence", &chain.sequence);
+                            add_row(&mut table, "Packet sequence", &chain.packet_sequence);
 
-                        match chain.connection_details {
-                            None => table.push(
-                                vec![
-                                    "Connection status".cell().bold(true),
-                                    "Not Connected".cell().foreground_color(Some(Color::Red)),
-                                ]
-                                .row(),
-                            ),
-                            Some(ref connection_details) => {
-                                table.push(
+                            match chain.connection_details {
+                                None => table.push(
                                     vec![
                                         "Connection status".cell().bold(true),
-                                        "Connected".cell().foreground_color(Some(Color::Green)),
+                                        "Not Connected".cell().foreground_color(Some(Color::Red)),
                                     ]
                                     .row(),
-                                );
+                                ),
+                                Some(ref connection_details) => {
+                                    table.push(
+                                        vec![
+                                            "Connection status".cell().bold(true),
+                                            "Connected".cell().foreground_color(Some(Color::Green)),
+                                        ]
+                                        .row(),
+                                    );
 
-                                add_row(
-                                    &mut table,
-                                    "Solo machine client ID",
-                                    &connection_details.solo_machine_channel_id,
-                                );
-                                add_row(
-                                    &mut table,
-                                    "Tendermint client ID",
-                                    &connection_details.tendermint_client_id,
-                                );
-                                add_row(
-                                    &mut table,
-                                    "Solo machine connection ID",
-                                    &connection_details.solo_machine_connection_id,
-                                );
-                                add_row(
-                                    &mut table,
-                                    "Tendermint connection ID",
-                                    &connection_details.tendermint_connection_id,
-                                );
-                                add_row(
-                                    &mut table,
-                                    "Solo machine channel ID",
-                                    &connection_details.solo_machine_channel_id,
-                                );
-                                add_row(
-                                    &mut table,
-                                    "Tendermint channel ID",
-                                    &connection_details.tendermint_channel_id,
-                                );
+                                    add_row(
+                                        &mut table,
+                                        "Solo machine client ID",
+                                        &connection_details.solo_machine_channel_id,
+                                    );
+                                    add_row(
+                                        &mut table,
+                                        "Tendermint client ID",
+                                        &connection_details.tendermint_client_id,
+                                    );
+                                    add_row(
+                                        &mut table,
+                                        "Solo machine connection ID",
+                                        &connection_details.solo_machine_connection_id,
+                                    );
+                                    add_row(
+                                        &mut table,
+                                        "Tendermint connection ID",
+                                        &connection_details.tendermint_connection_id,
+                                    );
+                                    add_row(
+                                        &mut table,
+                                        "Solo machine channel ID",
+                                        &connection_details.solo_machine_channel_id,
+                                    );
+                                    add_row(
+                                        &mut table,
+                                        "Tendermint channel ID",
+                                        &connection_details.tendermint_channel_id,
+                                    );
+                                }
                             }
+
+                            add_row(&mut table, "Created at", &chain.created_at);
+                            add_row(&mut table, "Updated at", &chain.updated_at);
+
+                            print_stdout(table.table().color_choice(color_choice))
+                                .context("unable to print table to stdout")
                         }
-
-                        add_row(&mut table, "Created at", &chain.created_at);
-                        add_row(&mut table, "Updated at", &chain.updated_at);
-
-                        print_stdout(table.table().color_choice(color_choice))
-                            .context("unable to print table to stdout")
-                    }
+                        OutputType::Json => print_json(
+                            color_choice,
+                            json!({
+                                "result": "success",
+                                "data": chain
+                            }),
+                        ),
+                    },
                 }
             }
             Self::GetPublicKeys {
@@ -312,20 +335,31 @@ impl ChainCommand {
                     .get_public_keys(chain_id, limit, offset)
                     .await?;
 
-                let table = keys
-                    .into_iter()
-                    .map(into_row)
-                    .collect::<Vec<RowStruct>>()
-                    .table()
-                    .title(vec![
-                        "ID".cell().bold(true),
-                        "Chain ID".cell().bold(true),
-                        "Public key".cell().bold(true),
-                        "Created at".cell().bold(true),
-                    ])
-                    .color_choice(color_choice);
+                match output {
+                    OutputType::Text => {
+                        let table = keys
+                            .into_iter()
+                            .map(into_row)
+                            .collect::<Vec<RowStruct>>()
+                            .table()
+                            .title(vec![
+                                "ID".cell().bold(true),
+                                "Chain ID".cell().bold(true),
+                                "Public key".cell().bold(true),
+                                "Created at".cell().bold(true),
+                            ])
+                            .color_choice(color_choice);
 
-                print_stdout(table).context("unable to print table to stdout")
+                        print_stdout(table).context("unable to print table to stdout")
+                    }
+                    OutputType::Json => print_json(
+                        color_choice,
+                        json!({
+                            "result": "success",
+                            "data": keys
+                        }),
+                    ),
+                }
             }
             Self::GetIbcDenom {
                 ref chain_id,
@@ -333,30 +367,55 @@ impl ChainCommand {
             } => {
                 let ibc_denom = chain_service.get_ibc_denom(chain_id, denom).await?;
 
-                let table = vec![vec![
-                    "IBC denom".cell().bold(true),
-                    ibc_denom
-                        .cell()
-                        .bold(true)
-                        .foreground_color(Some(Color::Green))
-                        .justify(Justify::Right),
-                ]]
-                .table()
-                .color_choice(color_choice);
+                match output {
+                    OutputType::Text => {
+                        let table = vec![vec![
+                            "IBC denom".cell().bold(true),
+                            ibc_denom
+                                .cell()
+                                .bold(true)
+                                .foreground_color(Some(Color::Green))
+                                .justify(Justify::Right),
+                        ]]
+                        .table()
+                        .color_choice(color_choice);
 
-                print_stdout(table).context("unable to print table to stdout")
+                        print_stdout(table).context("unable to print table to stdout")
+                    }
+                    OutputType::Json => print_json(
+                        color_choice,
+                        json!({
+                            "result": "success",
+                            "data": ibc_denom
+                        }),
+                    ),
+                }
             }
             Self::Balance { chain_id, denom } => {
                 let balance = chain_service.balance(signer, &chain_id, &denom).await?;
 
-                let table = vec![vec![
-                    "Balance".cell().bold(true),
-                    format!("{} {}", balance, denom).cell(),
-                ]]
-                .table()
-                .color_choice(color_choice);
+                match output {
+                    OutputType::Text => {
+                        let table = vec![vec![
+                            "Balance".cell().bold(true),
+                            format!("{} {}", balance, denom).cell(),
+                        ]]
+                        .table()
+                        .color_choice(color_choice);
 
-                print_stdout(table).context("unable to print table to stdout")
+                        print_stdout(table).context("unable to print table to stdout")
+                    }
+                    OutputType::Json => print_json(
+                        color_choice,
+                        json!({
+                            "result": "success",
+                            "data": {
+                                "balance": balance,
+                                "denom": denom,
+                            }
+                        }),
+                    ),
+                }
             }
         }
     }

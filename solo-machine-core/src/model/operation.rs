@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Denotes an operation on an account
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Operation {
     /// ID of operation
     pub id: i64,

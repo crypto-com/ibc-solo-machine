@@ -5,22 +5,29 @@ use async_trait::async_trait;
 use cli_table::{
     format::Justify, print_stdout, Cell, Color, ColorChoice, Row, RowStruct, Style, Table,
 };
+use serde_json::json;
 use solo_machine_core::{event::EventHandler, Event};
-use termcolor::{ColorSpec, StandardStream, WriteColor};
+use termcolor::{ColorSpec, StandardStream};
+
+use crate::{
+    command::{print_json, print_stream},
+    output::OutputType,
+};
 
 pub struct CliEventHandler {
     color_choice: ColorChoice,
+    output: OutputType,
 }
 
 impl CliEventHandler {
-    pub fn new(color_choice: ColorChoice) -> Self {
-        Self { color_choice }
+    pub fn new(color_choice: ColorChoice, output: OutputType) -> Self {
+        Self {
+            color_choice,
+            output,
+        }
     }
-}
 
-#[async_trait]
-impl EventHandler for CliEventHandler {
-    async fn handle(&self, event: Event) -> Result<()> {
+    fn handle_text_output(&self, event: Event) -> Result<()> {
         let mut stdout = StandardStream::stdout(self.color_choice);
 
         match event {
@@ -282,18 +289,35 @@ impl EventHandler for CliEventHandler {
 
         Ok(())
     }
+
+    fn handle_json_output(&self, event: Event) -> Result<()> {
+        match event {
+            Event::Warning { message } => print_json(
+                self.color_choice,
+                json!({
+                    "result": "warning",
+                    "data": message,
+                }),
+            ),
+            _ => print_json(
+                self.color_choice,
+                json!({
+                    "result": "success",
+                    "data": event,
+                }),
+            ),
+        }
+    }
 }
 
-fn print_stream(
-    stdout: &mut StandardStream,
-    color_spec: &ColorSpec,
-    s: impl Display,
-) -> Result<()> {
-    stdout.set_color(color_spec)?;
-    writeln!(stdout, "{}", s).context("unable to write to stdout")?;
-    stdout.reset().context("unable to reset stdout")?;
-
-    Ok(())
+#[async_trait]
+impl EventHandler for CliEventHandler {
+    async fn handle(&self, event: Event) -> Result<()> {
+        match self.output {
+            OutputType::Text => self.handle_text_output(event),
+            OutputType::Json => self.handle_json_output(event),
+        }
+    }
 }
 
 fn add_row(table: &mut Vec<RowStruct>, title: &str, value: impl Display) {
