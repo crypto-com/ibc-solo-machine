@@ -31,6 +31,7 @@ use tendermint_rpc::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::transaction_builder::msg_channel_close_init;
 use crate::{
     cosmos::crypto::PublicKey,
     event::{notify_event, Event},
@@ -90,11 +91,27 @@ impl IbcService {
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
-        if !force {
-            ensure!(
-                chain.connection_details.is_none(),
-                "connection is already established with given chain"
-            );
+        let already_established = {
+            match chain.connection_details {
+                None => false,
+                Some(ref detail) => {
+                    let port_id = &chain.config.port_id;
+                    let channel_id = &detail.tendermint_channel_id;
+                    let channel = ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
+                        .await?
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "channel for channel id ({}) and port id ({}) not found",
+                                channel_id,
+                                port_id
+                            )
+                        })?;
+                    channel.state == ChannelState::Open as i32
+                }
+            }
+        };
+        if already_established && !force {
+            anyhow::bail!("connection is already established with given chain");
         }
 
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
@@ -278,6 +295,67 @@ impl IbcService {
             .commit()
             .await
             .context("unable to commit transaction for creating ibc connection")
+    }
+
+    /// close the solomachine channel
+    pub async fn close_channel(
+        &self,
+        signer: impl Signer,
+        chain_id: ChainId,
+        request_id: Option<String>,
+        memo: String,
+    ) -> Result<()> {
+        let mut transaction = self
+            .db_pool
+            .begin()
+            .await
+            .context("unable to begin database transaction")?;
+        let chain = chain::get_chain(&mut transaction, &chain_id)
+            .await?
+            .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+        ensure!(
+            chain.connection_details.is_some(),
+            "chain connection details is empty"
+        );
+        let port_id = &chain.config.port_id;
+        update_channel_state(
+            &mut transaction,
+            port_id,
+            &connection_details.tendermint_channel_id,
+        )
+        .await?;
+        let connection_details = chain.connection_details.as_ref().unwrap();
+        let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
+            .context("unable to connect to rpc client")?;
+        let closed_solo_machine_channel_id = channel_close_init(
+            &mut transaction,
+            &rpc_client,
+            &signer,
+            chain_id.clone(),
+            request_id.as_deref(),
+            memo.clone(),
+        )
+        .await?;
+        ensure!(
+            connection_details.solo_machine_channel_id.to_string()
+                == closed_solo_machine_channel_id,
+            format!(
+                "closed wrong solo machine channel, expect {}, get {}",
+                connection_details.solo_machine_channel_id, closed_solo_machine_channel_id
+            ),
+        );
+        notify_event(
+            &self.notifier,
+            Event::CloseChannelInitOnSoloMachine {
+                chain_id: chain_id.to_string(),
+                channel_id: connection_details.solo_machine_channel_id.clone(),
+            },
+        )?;
+        transaction
+            .commit()
+            .await
+            .context("unable to commit transaction for creating ibc connection")?;
+        Ok(())
     }
 
     /// Mint some tokens on IBC enabled chain
@@ -898,6 +976,62 @@ async fn channel_open_confirm(
             )
         })?;
     channel.set_state(ChannelState::Open);
+
+    ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await
+}
+
+/// Close solomachine channel, return the solo-machine channel id
+pub async fn channel_close_init<C>(
+    transaction: &mut Transaction<'_, Db>,
+    rpc_client: &C,
+    signer: impl Signer,
+    chain_id: ChainId,
+    request_id: Option<&str>,
+    memo: String,
+) -> Result<String>
+where
+    C: Client + Send + Sync,
+{
+    let chain = chain::get_chain(transaction, &chain_id)
+        .await?
+        .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+    ensure!(
+        chain.connection_details.is_some(),
+        "connection is not established with given chain"
+    );
+
+    let msg = msg_channel_close_init(signer, &chain, memo, request_id).await?;
+
+    let response = rpc_client
+        .broadcast_tx_commit(proto_encode(&msg)?.into())
+        .await?;
+
+    ensure_response_success(&response)?;
+
+    let channel_id: String = extract_attribute(
+        &response.deliver_tx.events,
+        "channel_close_init",
+        "channel_id",
+    )?
+    .parse()?;
+    Ok(channel_id)
+}
+
+async fn update_channel_state(
+    transaction: &mut Transaction<'_, Db>,
+    port_id: &PortId,
+    channel_id: &ChannelId,
+) -> Result<()> {
+    let mut channel = ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
+        .await?
+        .ok_or_else(|| {
+            anyhow!(
+                "channel for channel id ({}) and port id ({}) not found",
+                channel_id,
+                port_id
+            )
+        })?;
+    channel.set_state(ChannelState::Closed);
 
     ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await
 }

@@ -53,6 +53,20 @@ impl CliEventHandler {
 
                 print_stdout(table).context("unable to print table to stdout")?;
             }
+            Event::CloseChannelInitOnSoloMachine {
+                chain_id,
+                channel_id,
+            } => {
+                print_stream(
+                    &mut stdout,
+                    ColorSpec::new().set_bold(true),
+                    format!(
+                        "Chain channel init closed! [Chain ID = {}] [Channel ID = {}]",
+                        chain_id, channel_id
+                    ),
+                )?;
+                writeln!(stdout)?;
+            }
             Event::TokensMinted {
                 chain_id,
                 request_id,

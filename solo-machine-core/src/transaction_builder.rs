@@ -40,8 +40,8 @@ use cosmos_sdk_proto::{
         core::{
             channel::v1::{
                 Channel, Counterparty as ChannelCounterparty, MsgAcknowledgement,
-                MsgChannelOpenAck, MsgChannelOpenInit, MsgRecvPacket, Order as ChannelOrder,
-                Packet, State as ChannelState,
+                MsgChannelCloseInit, MsgChannelOpenAck, MsgChannelOpenInit, MsgRecvPacket,
+                Order as ChannelOrder, Packet, State as ChannelState,
             },
             client::v1::{Height, MsgCreateClient, MsgUpdateClient},
             commitment::v1::MerklePrefix,
@@ -335,6 +335,27 @@ pub async fn msg_channel_open_init(
         signer: signer.to_account_address()?,
     };
 
+    build(signer, chain, &[message], memo, request_id).await
+}
+
+pub async fn msg_channel_close_init(
+    signer: impl Signer,
+    chain: &Chain,
+    memo: String,
+    request_id: Option<&str>,
+) -> Result<TxRaw> {
+    let port_id = chain.config.port_id.to_string();
+    let solo_machine_channel_id = chain
+        .connection_details
+        .clone()
+        .unwrap()
+        .solo_machine_channel_id
+        .to_string();
+    let message = MsgChannelCloseInit {
+        port_id,
+        channel_id: solo_machine_channel_id,
+        signer: signer.to_account_address()?,
+    };
     build(signer, chain, &[message], memo, request_id).await
 }
 
