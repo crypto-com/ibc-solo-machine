@@ -2,16 +2,16 @@
 name = "solo-machine-core"
 version = "0.1.0"
 authors = ["Devashish Dixit <devashishdxt@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.43"
+anyhow = "1.0.44"
 async-trait = "0.1.51"
 bech32 = "0.8.1"
 chrono = "0.4.19"
-cosmos-sdk-proto = "0.6.3"
+cosmos-sdk-proto = "0.7.0"
 ed25519-dalek = "1.0.1"
 hex = { version = "0.4.3", features = ["serde"] }
 k256 = { version = "0.9.6", features = ["ecdsa"] }
@@ -21,27 +21,27 @@ prost-types = "0.7.0"
 rand = "0.8.4"
 regex = "1.5.4"
 ripemd160 = "0.9.1"
-rust_decimal = "1.15.0"
+rust_decimal = "1.17.0"
 serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.67"
-sha2 = "0.9.6"
+serde_json = "1.0.68"
+sha2 = "0.9.8"
 sha3 = { version = "0.9.1", optional = true }
-sqlx = { version = "0.5.7", features = [
+sqlx = { version = "0.5.9", features = [
     "json",
     "macros",
     "runtime-tokio-rustls",
     "sqlite",
     "chrono",
 ] }
-tendermint = "0.21.0"
-tendermint-light-client = "0.21.0"
-tendermint-rpc = { version = "0.21.0", features = ["http-client"] }
-tokio = { version = "1.11.0", features = ["sync"] }
+tendermint = "0.22.0"
+tendermint-light-client = "0.22.0"
+tendermint-rpc = { version = "0.22.0", features = ["http-client"] }
+tokio = { version = "1.12.0", features = ["sync"] }
 tonic = { version = "0.4.3", features = ["tls", "tls-roots"] }
 urlencoding = "2.1.0"
 
 [build-dependencies]
-tonic-build = "0.5.1"
+tonic-build = "0.5.2"
 
 [features]
 default = ["solomachine-v2"]
