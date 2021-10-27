@@ -77,7 +77,7 @@ impl ChainService {
             .await?
             .ok_or_else(|| anyhow!("chain details not found when computing ibc denom"))?;
         chain
-            .get_ibc_denom(denom)
+            .get_ibc_denom(denom)?
             .ok_or_else(|| anyhow!("connection details not found when computing ibc denom"))
     }
 

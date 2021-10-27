@@ -49,18 +49,27 @@ pub struct Chain {
 impl Chain {
     /// Returns the IBC denom of given denomination based on connection details. Returns `None` if connection details
     /// are not present.
-    pub fn get_ibc_denom(&self, denom: &Identifier) -> Option<String> {
-        let connection_details = self.connection_details.as_ref()?;
+    pub fn get_ibc_denom(&self, denom: &Identifier) -> Result<Option<String>> {
+        let connection_details = self.connection_details.as_ref();
+        ensure!(
+            connection_details.is_some(),
+            "connection is not established with given chain"
+        );
+        let connection_details = connection_details.unwrap();
+        ensure!(
+            connection_details.solo_machine_channel_id.is_some(),
+            "can't find solo machine channel, channel is already closed"
+        );
 
         let denom_trace = DenomTrace::new(
             &self.config.port_id,
-            &connection_details.solo_machine_channel_id,
+            connection_details.solo_machine_channel_id.as_ref().unwrap(),
             denom,
         );
 
         let hash = Sha256::digest(denom_trace.to_string().as_bytes());
 
-        Some(format!("ibc/{}", hex::encode_upper(hash)))
+        Ok(Some(format!("ibc/{}", hex::encode_upper(hash))))
     }
 
     /// Fetches on-chain balance of given denom
@@ -77,7 +86,7 @@ impl Chain {
             ))?;
 
         let denom = self
-            .get_ibc_denom(denom)
+            .get_ibc_denom(denom)?
             .ok_or_else(|| anyhow!("connection details not found when fetching balance"))?;
 
         let request = QueryBalanceRequest {
@@ -170,9 +179,9 @@ pub struct ConnectionDetails {
     /// Connection ID of IBC enabled chain on solo machine
     pub tendermint_connection_id: ConnectionId,
     /// Channel ID of solo machine client on IBC enabled chain
-    pub solo_machine_channel_id: ChannelId,
+    pub solo_machine_channel_id: Option<ChannelId>,
     /// Channel ID of IBC enabled chain on solo machine
-    pub tendermint_channel_id: ChannelId,
+    pub tendermint_channel_id: Option<ChannelId>,
 }
 
 impl From<Chain> for RawChain {

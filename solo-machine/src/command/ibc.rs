@@ -158,7 +158,7 @@ impl IbcCommand {
                 request_id,
             } => {
                 ibc_service
-                    .close_channel(signer, chain_id, request_id, memo)
+                    .close_channel(signer, &chain_id, request_id, memo)
                     .await
             }
             Self::Mint {

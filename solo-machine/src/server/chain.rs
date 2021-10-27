@@ -239,8 +239,12 @@ where
                     tendermint_connection_id: connection_details
                         .tendermint_connection_id
                         .to_string(),
-                    solo_machine_channel_id: connection_details.solo_machine_channel_id.to_string(),
-                    tendermint_channel_id: connection_details.tendermint_channel_id.to_string(),
+                    solo_machine_channel_id: connection_details
+                        .solo_machine_channel_id
+                        .map(|s| s.to_string()),
+                    tendermint_channel_id: connection_details
+                        .tendermint_channel_id
+                        .map(|s| s.to_string()),
                 }
             }),
             created_at: Some(SystemTime::from(chain.created_at).into()),
