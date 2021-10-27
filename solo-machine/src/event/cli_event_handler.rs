@@ -60,12 +60,15 @@ impl CliEventHandler {
                 print_stream(
                     &mut stdout,
                     ColorSpec::new().set_bold(true),
-                    format!(
-                        "Chain channel init closed! [Chain ID = {}] [Channel ID = {}]",
-                        chain_id, channel_id
-                    ),
+                    "Chain channel init closed!",
                 )?;
                 writeln!(stdout)?;
+                let mut table = Vec::new();
+
+                add_row(&mut table, "Chain ID", chain_id);
+                add_row(&mut table, "Solo Machine Channel Id", channel_id);
+                print_stdout(table.table().color_choice(self.color_choice))
+                    .context("unable to print table to stdout")?;
             }
             Event::TokensMinted {
                 chain_id,

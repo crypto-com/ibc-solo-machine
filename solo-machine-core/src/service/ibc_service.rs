@@ -437,7 +437,7 @@ impl IbcService {
             &self.notifier,
             Event::CloseChannelInitOnSoloMachine {
                 chain_id: chain_id.to_string(),
-                channel_id: solo_machine_channel_id.clone(),
+                channel_id: solo_machine_channel_id,
             },
         )?;
 

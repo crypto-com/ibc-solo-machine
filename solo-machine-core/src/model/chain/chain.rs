@@ -49,7 +49,7 @@ pub struct Chain {
 impl Chain {
     /// Returns the IBC denom of given denomination based on connection details. Returns `None` if connection details
     /// are not present.
-    pub fn get_ibc_denom(&self, denom: &Identifier) -> Result<Option<String>> {
+    pub fn get_ibc_denom(&self, denom: &Identifier) -> Result<String> {
         let connection_details = self.connection_details.as_ref();
         ensure!(
             connection_details.is_some(),
@@ -69,7 +69,7 @@ impl Chain {
 
         let hash = Sha256::digest(denom_trace.to_string().as_bytes());
 
-        Ok(Some(format!("ibc/{}", hex::encode_upper(hash))))
+        Ok(format!("ibc/{}", hex::encode_upper(hash)))
     }
 
     /// Fetches on-chain balance of given denom
@@ -85,9 +85,7 @@ impl Chain {
                 self.config.grpc_addr
             ))?;
 
-        let denom = self
-            .get_ibc_denom(denom)?
-            .ok_or_else(|| anyhow!("connection details not found when fetching balance"))?;
+        let denom = self.get_ibc_denom(denom)?;
 
         let request = QueryBalanceRequest {
             address: signer.to_account_address()?,

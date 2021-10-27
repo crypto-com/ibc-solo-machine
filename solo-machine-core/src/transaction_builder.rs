@@ -497,12 +497,7 @@ pub async fn msg_token_receive(
         "can't find solo machine channel, channel is ready closed"
     );
 
-    let denom = chain.get_ibc_denom(denom)?.ok_or_else(|| {
-        anyhow!(
-            "connection is not established with chain with id {}",
-            chain.id
-        )
-    })?;
+    let denom = chain.get_ibc_denom(denom)?;
 
     let sender = signer.to_account_address()?;
 
