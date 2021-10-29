@@ -10,14 +10,14 @@ edition = "2021"
 anyhow = "1.0.44"
 async-trait = "0.1.51"
 bech32 = "0.8.1"
-chrono = "0.4.19"
-cosmos-sdk-proto = "0.7.0"
-ed25519-dalek = "1.0.1"
+chrono = { version = "0.4.19", default-features = false }
+cosmos-sdk-proto = "0.8.0"
+ed25519-dalek = { version = "1.0.1", features = ["serde"] }
 hex = { version = "0.4.3", features = ["serde"] }
 k256 = { version = "0.9.6", features = ["ecdsa"] }
 num-rational = { version = "0.4.0", features = ["serde"] }
-prost = "0.7.0"
-prost-types = "0.7.0"
+prost = "0.9.0"
+prost-types = "0.9.0"
 rand = "0.8.4"
 regex = "1.5.4"
 ripemd160 = "0.9.1"
@@ -33,15 +33,15 @@ sqlx = { version = "0.5.9", features = [
     "sqlite",
     "chrono",
 ] }
-tendermint = "0.22.0"
-tendermint-light-client = "0.22.0"
-tendermint-rpc = { version = "0.22.0", features = ["http-client"] }
+tendermint = "0.23.0"
+tendermint-light-client = "0.23.0"
+tendermint-rpc = { version = "0.23.0", features = ["http-client"] }
 tokio = { version = "1.12.0", features = ["sync"] }
-tonic = { version = "0.4.3", features = ["tls", "tls-roots"] }
+tonic = { version = "0.6.1", features = ["tls", "tls-roots"] }
 urlencoding = "2.1.0"
 
 [build-dependencies]
-tonic-build = "0.5.2"
+tonic-build = "0.6.0"
 
 [features]
 default = ["solomachine-v2"]

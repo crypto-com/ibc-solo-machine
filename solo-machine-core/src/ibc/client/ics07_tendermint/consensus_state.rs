@@ -16,7 +16,7 @@ impl IConsensusState for ConsensusState {
             root: Some(MerkleRoot {
                 hash: header.app_hash.value(),
             }),
-            timestamp: Some(Timestamp::from(SystemTime::from(header.time))),
+            timestamp: Some(Timestamp::from(SystemTime::from(header.time.0))),
             next_validators_hash: header.next_validators_hash.as_bytes().to_vec(),
         }
     }

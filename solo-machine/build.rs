@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     tonic_build::configure()
         .build_client(false)
-        .compile_with_config(config, &files, &["proto".into()])?;
+        .compile_with_config(config, &files, &["proto"])?;
 
     Ok(())
 }
