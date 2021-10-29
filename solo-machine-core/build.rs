@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "::cosmos_sdk_proto::ibc::core::channel::v1",
         )
         .build_server(false)
-        .compile(&files, &["proto".into()])?;
+        .compile(&files, &["proto"])?;
 
     Ok(())
 }
