@@ -41,6 +41,22 @@ pub enum IbcCommand {
         #[structopt(long)]
         force: bool,
     },
+    /// Close solomachine channel
+    CloseChannel {
+        /// Chain ID of IBC enabled chain
+        chain_id: ChainId,
+        /// Optional memo to include in transactions
+        #[structopt(
+            long,
+            default_value = "solo-machine-memo",
+            env = "SOLO_MEMO",
+            hide_env_values = true
+        )]
+        memo: String,
+        /// Optional request ID (for tracking purposes)
+        #[structopt(long)]
+        request_id: Option<String>,
+    },
     /// Mint some tokens on IBC enabled chain
     Mint {
         /// Chain ID of IBC enabled chain
@@ -134,6 +150,15 @@ impl IbcCommand {
             } => {
                 ibc_service
                     .connect(signer, chain_id, request_id, memo, force)
+                    .await
+            }
+            Self::CloseChannel {
+                chain_id,
+                memo,
+                request_id,
+            } => {
+                ibc_service
+                    .close_channel(signer, &chain_id, request_id, memo)
                     .await
             }
             Self::Mint {

@@ -95,6 +95,13 @@ pub enum Event {
         /// Channel ID of solo machine client on IBC enabled chain
         channel_id: ChannelId,
     },
+    /// Close channel on IBC enabled chain
+    CloseChannelInitOnSoloMachine {
+        /// Chain ID of IBC enabled chain
+        chain_id: String,
+        /// Channel ID of IBC enabled chain on solo machine
+        channel_id: ChannelId,
+    },
     /// Initialized channel on solo machine
     InitializedChannelOnSoloMachine {
         /// Channel ID of IBC enabled chain on solo machine

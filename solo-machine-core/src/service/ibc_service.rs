@@ -31,6 +31,8 @@ use tendermint_rpc::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::model::ConnectionDetails;
+use crate::transaction_builder::msg_channel_close_init;
 use crate::{
     cosmos::crypto::PublicKey,
     event::{notify_event, Event},
@@ -90,181 +92,90 @@ impl IbcService {
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
-        if !force {
-            ensure!(
-                chain.connection_details.is_none(),
-                "connection is already established with given chain"
-            );
+        let (already_established, channel_closed) = {
+            match chain.connection_details {
+                None => (false, true),
+                Some(ref detail) => {
+                    let port_id = &chain.config.port_id;
+                    match &detail.tendermint_channel_id {
+                        Some(channel_id) => {
+                            let channel =
+                                ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
+                                    .await?
+                                    .ok_or_else(|| {
+                                        anyhow!(
+                                "channel for channel id ({}) and port id ({}) not found",
+                                channel_id,
+                                port_id
+                            )
+                                    })?;
+                            (true, channel.state == ChannelState::Closed as i32)
+                        }
+                        None => (true, true),
+                    }
+                }
+            }
+        };
+        if already_established && !channel_closed && !force {
+            anyhow::bail!("connection is already established with given chain");
         }
 
+        // if connection is not not established or connection is established, but need to force reconnect
+        // create new client and connection first
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
             .context("unable to connect to rpc client")?;
-        let mut instance =
-            prepare_light_client(&chain, rpc_client.clone(), Box::new(MemoryStore::new()))?;
-
-        let solo_machine_client_id = create_solo_machine_client(
-            &signer,
-            &rpc_client,
-            &chain,
-            memo.clone(),
-            request_id.as_deref(),
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::CreatedSoloMachineClient {
-                client_id: solo_machine_client_id.clone(),
-            },
-        )?;
-
-        let tendermint_client_id =
-            create_tendermint_client(&mut transaction, &mut instance, &chain).await?;
-
-        notify_event(
-            &self.notifier,
-            Event::CreatedTendermintClient {
-                client_id: tendermint_client_id.clone(),
-            },
-        )?;
-
-        let solo_machine_connection_id = connection_open_init(
-            &signer,
-            &rpc_client,
-            &chain,
-            &solo_machine_client_id,
-            &tendermint_client_id,
-            memo.clone(),
-            request_id.as_deref(),
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::InitializedConnectionOnTendermint {
-                connection_id: solo_machine_connection_id.clone(),
-            },
-        )?;
-
-        let tendermint_connection_id = connection_open_try(
-            &mut transaction,
-            &tendermint_client_id,
-            &solo_machine_client_id,
-            &solo_machine_connection_id,
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::InitializedConnectionOnSoloMachine {
-                connection_id: tendermint_connection_id.clone(),
-            },
-        )?;
-
-        connection_open_ack(
-            &mut transaction,
-            &signer,
-            &rpc_client,
-            &mut chain,
-            &solo_machine_connection_id,
-            &tendermint_client_id,
-            &tendermint_connection_id,
-            memo.clone(),
-            request_id.as_deref(),
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::ConfirmedConnectionOnTendermint {
-                connection_id: solo_machine_connection_id.clone(),
-            },
-        )?;
-
-        connection_open_confirm(&mut transaction, &tendermint_connection_id).await?;
-
-        notify_event(
-            &self.notifier,
-            Event::ConfirmedConnectionOnSoloMachine {
-                connection_id: tendermint_connection_id.clone(),
-            },
-        )?;
-
-        let solo_machine_channel_id = channel_open_init(
-            &signer,
-            &rpc_client,
-            &chain,
-            &solo_machine_connection_id,
-            memo.clone(),
-            request_id.as_deref(),
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::InitializedChannelOnTendermint {
-                channel_id: solo_machine_channel_id.clone(),
-            },
-        )?;
-
-        let tendermint_channel_id = channel_open_try(
-            &mut transaction,
-            &chain.config.port_id,
-            &solo_machine_channel_id,
-            &tendermint_connection_id,
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::InitializedChannelOnSoloMachine {
-                channel_id: tendermint_channel_id.clone(),
-            },
-        )?;
-
-        channel_open_ack(
-            &mut transaction,
-            signer,
-            &rpc_client,
-            &mut chain,
-            &solo_machine_channel_id,
-            &tendermint_channel_id,
-            memo,
-            request_id.as_deref(),
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::ConfirmedChannelOnTendermint {
-                channel_id: solo_machine_channel_id.clone(),
-            },
-        )?;
-
-        channel_open_confirm(
-            &mut transaction,
-            &chain.config.port_id,
-            &tendermint_channel_id,
-        )
-        .await?;
-
-        notify_event(
-            &self.notifier,
-            Event::ConfirmedChannelOnSoloMachine {
-                channel_id: tendermint_channel_id.clone(),
-            },
-        )?;
-
+        let (client_id, connection_id) = if !already_established {
+            let client_id = self
+                .create_new_client(
+                    &signer,
+                    memo.clone(),
+                    request_id.as_deref(),
+                    &chain,
+                    rpc_client.clone(),
+                    &mut transaction,
+                )
+                .await?;
+            let connection_id = self
+                .create_connection(
+                    &mut chain,
+                    &signer,
+                    &rpc_client,
+                    &mut transaction,
+                    &client_id.0,
+                    &client_id.1,
+                    memo.clone(),
+                    request_id.as_deref(),
+                )
+                .await?;
+            (client_id, connection_id)
+        } else {
+            if !channel_closed && !force {
+                anyhow::bail!("connection is already established with given chain");
+            }
+            todo!("get solo_chaine_client_id and tendermint_client_id")
+        };
+        let (solo_machine_channel_id, tendermint_channel_id) = self
+            .open_channel(
+                &signer,
+                memo,
+                request_id.as_deref(),
+                &mut chain,
+                &rpc_client,
+                &connection_id.0,
+                &connection_id.1,
+                &mut transaction,
+            )
+            .await?;
         let connection_details = ChainConnectionDetails {
-            solo_machine_client_id,
-            tendermint_client_id,
-            solo_machine_connection_id,
-            tendermint_connection_id,
-            solo_machine_channel_id,
-            tendermint_channel_id,
+            solo_machine_client_id: client_id.0.clone(),
+            tendermint_client_id: client_id.1,
+            solo_machine_connection_id: connection_id.0.clone(),
+            tendermint_connection_id: connection_id.1,
+            solo_machine_channel_id: Some(solo_machine_channel_id),
+            tendermint_channel_id: Some(tendermint_channel_id),
         };
 
-        chain::add_connection_details(&mut transaction, &chain.id, &connection_details).await?;
+        chain::add_connection_details(&mut *transaction, &chain.id, &connection_details).await?;
 
         notify_event(
             &self.notifier,
@@ -278,6 +189,264 @@ impl IbcService {
             .commit()
             .await
             .context("unable to commit transaction for creating ibc connection")
+    }
+
+    async fn create_new_client<'e>(
+        &self,
+        signer: impl Signer,
+        memo: String,
+        request_id: Option<&str>,
+        chain: &Chain,
+        rpc_client: HttpClient,
+        transaction: &mut Transaction<'_, Db>,
+    ) -> Result<(ClientId, ClientId)> {
+        let mut instance =
+            prepare_light_client(chain, rpc_client.clone(), Box::new(MemoryStore::new()))?;
+
+        let solo_machine_client_id =
+            create_solo_machine_client(signer, &rpc_client, chain, memo, request_id).await?;
+
+        notify_event(
+            &self.notifier,
+            Event::CreatedSoloMachineClient {
+                client_id: solo_machine_client_id.clone(),
+            },
+        )?;
+
+        let tendermint_client_id =
+            create_tendermint_client(transaction, &mut instance, chain).await?;
+
+        notify_event(
+            &self.notifier,
+            Event::CreatedTendermintClient {
+                client_id: tendermint_client_id.clone(),
+            },
+        )?;
+        Ok((solo_machine_client_id, tendermint_client_id))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn create_connection<'e>(
+        &self,
+        chain: &mut Chain,
+        signer: impl Signer,
+        rpc_client: &HttpClient,
+        transaction: &mut Transaction<'_, Db>,
+        solo_machine_client_id: &ClientId,
+        tendermint_client_id: &ClientId,
+        memo: String,
+        request_id: Option<&str>,
+    ) -> Result<(ConnectionId, ConnectionId)> {
+        let solo_machine_connection_id = connection_open_init(
+            &signer,
+            rpc_client,
+            chain,
+            solo_machine_client_id,
+            tendermint_client_id,
+            memo.clone(),
+            request_id,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::InitializedConnectionOnTendermint {
+                connection_id: solo_machine_connection_id.clone(),
+            },
+        )?;
+
+        let tendermint_connection_id = connection_open_try(
+            &mut *transaction,
+            tendermint_client_id,
+            solo_machine_client_id,
+            &solo_machine_connection_id,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::InitializedConnectionOnSoloMachine {
+                connection_id: tendermint_connection_id.clone(),
+            },
+        )?;
+
+        connection_open_ack(
+            &mut *transaction,
+            &signer,
+            rpc_client,
+            chain,
+            &solo_machine_connection_id,
+            tendermint_client_id,
+            &tendermint_connection_id,
+            memo.clone(),
+            request_id,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::ConfirmedConnectionOnTendermint {
+                connection_id: solo_machine_connection_id.clone(),
+            },
+        )?;
+
+        connection_open_confirm(&mut *transaction, &tendermint_connection_id).await?;
+
+        notify_event(
+            &self.notifier,
+            Event::ConfirmedConnectionOnSoloMachine {
+                connection_id: tendermint_connection_id.clone(),
+            },
+        )?;
+        Ok((solo_machine_connection_id, tendermint_connection_id))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn open_channel<'e>(
+        &self,
+        signer: &impl Signer,
+        memo: String,
+        request_id: Option<&str>,
+        chain: &mut Chain,
+        rpc_client: &HttpClient,
+        solo_machine_connection_id: &ConnectionId,
+        tendermint_connection_id: &ConnectionId,
+        transaction: &mut Transaction<'_, Db>,
+    ) -> Result<(ChannelId, ChannelId)> {
+        let solo_machine_channel_id = channel_open_init(
+            signer,
+            rpc_client,
+            chain,
+            solo_machine_connection_id,
+            memo.clone(),
+            request_id,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::InitializedChannelOnTendermint {
+                channel_id: solo_machine_channel_id.clone(),
+            },
+        )?;
+
+        let tendermint_channel_id = channel_open_try(
+            &mut *transaction,
+            &chain.config.port_id,
+            &solo_machine_channel_id,
+            tendermint_connection_id,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::InitializedChannelOnSoloMachine {
+                channel_id: tendermint_channel_id.clone(),
+            },
+        )?;
+
+        channel_open_ack(
+            &mut *transaction,
+            signer,
+            rpc_client,
+            chain,
+            &solo_machine_channel_id,
+            &tendermint_channel_id,
+            memo,
+            request_id,
+        )
+        .await?;
+
+        notify_event(
+            &self.notifier,
+            Event::ConfirmedChannelOnTendermint {
+                channel_id: solo_machine_channel_id.clone(),
+            },
+        )?;
+
+        channel_open_confirm(transaction, &chain.config.port_id, &tendermint_channel_id).await?;
+
+        notify_event(
+            &self.notifier,
+            Event::ConfirmedChannelOnSoloMachine {
+                channel_id: tendermint_channel_id.clone(),
+            },
+        )?;
+        Ok((solo_machine_channel_id, tendermint_channel_id))
+    }
+
+    /// close the solomachine channel
+    pub async fn close_channel(
+        &self,
+        signer: impl Signer,
+        chain_id: &ChainId,
+        request_id: Option<String>,
+        memo: String,
+    ) -> Result<()> {
+        let mut transaction = self
+            .db_pool
+            .begin()
+            .await
+            .context("unable to begin database transaction")?;
+        let chain = chain::get_chain(&mut transaction, chain_id)
+            .await?
+            .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+        ensure!(
+            chain.connection_details.is_some(),
+            "chain connection details is empty"
+        );
+        let connection_details = chain.connection_details.as_ref().unwrap();
+        ensure!(
+            connection_details.solo_machine_channel_id.is_some(),
+            "can't find solo machine channel, channel is already closed",
+        );
+        let mut new_connection_details = connection_details.clone();
+        new_connection_details.solo_machine_channel_id = None;
+        new_connection_details.tendermint_channel_id = None;
+
+        let solo_machine_channel_id = connection_details.solo_machine_channel_id.clone().unwrap();
+        let port_id = &chain.config.port_id;
+        let tendermint_channel_id = connection_details.tendermint_channel_id.as_ref().unwrap();
+        close_channel_confirm(
+            &mut transaction,
+            port_id,
+            tendermint_channel_id,
+            &chain.id,
+            &new_connection_details,
+        )
+        .await?;
+        let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
+            .context("unable to connect to rpc client")?;
+        let closed_solo_machine_channel_id = channel_close_init(
+            &mut transaction,
+            &rpc_client,
+            &signer,
+            chain_id.clone(),
+            request_id.as_deref(),
+            memo.clone(),
+        )
+        .await?;
+        ensure!(
+            solo_machine_channel_id.to_string() == closed_solo_machine_channel_id,
+            format!(
+                "closed wrong solo machine channel, expect {}, get {}",
+                solo_machine_channel_id, closed_solo_machine_channel_id
+            ),
+        );
+        notify_event(
+            &self.notifier,
+            Event::CloseChannelInitOnSoloMachine {
+                chain_id: chain_id.to_string(),
+                channel_id: solo_machine_channel_id,
+            },
+        )?;
+
+        transaction
+            .commit()
+            .await
+            .context("unable to commit transaction for creating ibc connection")?;
+
+        Ok(())
     }
 
     /// Mint some tokens on IBC enabled chain
@@ -578,6 +747,16 @@ impl IbcService {
                 chain.id
             )
         })?;
+        ensure!(
+            connection_details.tendermint_channel_id.is_some(),
+            "can't find tendermint channel, channel is already closed"
+        );
+        ensure!(
+            connection_details.solo_machine_channel_id.is_some(),
+            "can't find solo machine channel, channel is already closed"
+        );
+        let solo_machine_channel_id = connection_details.solo_machine_channel_id.as_ref().unwrap();
+        let tendermint_channel_id = connection_details.tendermint_channel_id.as_ref().unwrap();
 
         for packet in packets {
             ensure!(
@@ -585,7 +764,7 @@ impl IbcService {
                 "invalid source port id"
             );
             ensure!(
-                connection_details.solo_machine_channel_id.to_string() == packet.source_channel,
+                solo_machine_channel_id.to_string() == packet.source_channel,
                 "invalid source channel id"
             );
             ensure!(
@@ -593,7 +772,7 @@ impl IbcService {
                 "invalid destination port id"
             );
             ensure!(
-                connection_details.tendermint_channel_id.to_string() == packet.destination_channel,
+                tendermint_channel_id.to_string() == packet.destination_channel,
                 "invalid destination channel id"
             );
 
@@ -651,7 +830,7 @@ where
     extract_attribute(&response.deliver_tx.events, "create_client", "client_id")?.parse()
 }
 
-async fn create_tendermint_client(
+async fn create_tendermint_client<'e>(
     transaction: &mut Transaction<'_, Db>,
     instance: &mut Instance,
     chain: &Chain,
@@ -744,20 +923,17 @@ async fn connection_open_try<'e>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn connection_open_ack<C>(
+async fn connection_open_ack(
     transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
-    rpc_client: &C,
+    rpc_client: &HttpClient,
     chain: &mut Chain,
     solo_machine_connection_id: &ConnectionId,
     tendermint_client_id: &ClientId,
     tendermint_connection_id: &ConnectionId,
     memo: String,
     request_id: Option<&str>,
-) -> Result<()>
-where
-    C: Client + Send + Sync,
-{
+) -> Result<()> {
     let msg = transaction_builder::msg_connection_open_ack(
         transaction,
         signer,
@@ -899,7 +1075,68 @@ async fn channel_open_confirm(
         })?;
     channel.set_state(ChannelState::Open);
 
-    ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await
+    ibc_handler::update_channel(transaction, port_id, channel_id, &channel).await
+}
+
+/// Close solomachine channel, return the solo-machine channel id
+pub async fn channel_close_init<C>(
+    transaction: &mut Transaction<'_, Db>,
+    rpc_client: &C,
+    signer: impl Signer,
+    chain_id: ChainId,
+    request_id: Option<&str>,
+    memo: String,
+) -> Result<String>
+where
+    C: Client + Send + Sync,
+{
+    let chain = chain::get_chain(transaction, &chain_id)
+        .await?
+        .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
+    ensure!(
+        chain.connection_details.is_some(),
+        "connection is not established with given chain"
+    );
+
+    let msg = msg_channel_close_init(signer, &chain, memo, request_id).await?;
+
+    let response = rpc_client
+        .broadcast_tx_commit(proto_encode(&msg)?.into())
+        .await?;
+
+    ensure_response_success(&response)?;
+
+    let channel_id: String = extract_attribute(
+        &response.deliver_tx.events,
+        "channel_close_init",
+        "channel_id",
+    )?
+    .parse()?;
+    Ok(channel_id)
+}
+
+async fn close_channel_confirm(
+    transaction: &mut Transaction<'_, Db>,
+    port_id: &PortId,
+    channel_id: &ChannelId,
+    chain_id: &ChainId,
+    new_connection_details: &ConnectionDetails,
+) -> Result<()> {
+    // set the channel status to close
+    let mut channel = ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
+        .await?
+        .ok_or_else(|| {
+            anyhow!(
+                "channel for channel id ({}) and port id ({}) not found",
+                channel_id,
+                port_id
+            )
+        })?;
+    channel.set_state(ChannelState::Closed);
+    ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await?;
+
+    chain::add_connection_details(&mut *transaction, chain_id, new_connection_details).await?;
+    Ok(())
 }
 
 fn prepare_light_client(

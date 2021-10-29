@@ -123,7 +123,7 @@ message ConnectionDetails {
     // Connection ID of IBC enabled chain on solo machine
     string tendermint_connection_id = 4;
     // Channel ID of solo machine on IBC enabled chain
-    string solo_machine_channel_id = 5;
+    optional string solo_machine_channel_id = 5;
     // Channel ID of IBC enabled chain on solo machine
-    string tendermint_channel_id = 6;
+    optional string tendermint_channel_id = 6;
 }

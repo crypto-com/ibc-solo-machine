@@ -280,7 +280,10 @@ impl ChainCommand {
                                     add_row(
                                         &mut table,
                                         "Solo machine client ID",
-                                        &connection_details.solo_machine_channel_id,
+                                        connection_details
+                                            .solo_machine_channel_id
+                                            .as_ref()
+                                            .unwrap(),
                                     );
                                     add_row(
                                         &mut table,
@@ -300,12 +303,15 @@ impl ChainCommand {
                                     add_row(
                                         &mut table,
                                         "Solo machine channel ID",
-                                        &connection_details.solo_machine_channel_id,
+                                        connection_details
+                                            .solo_machine_channel_id
+                                            .as_ref()
+                                            .unwrap(),
                                     );
                                     add_row(
                                         &mut table,
                                         "Tendermint channel ID",
-                                        &connection_details.tendermint_channel_id,
+                                        connection_details.tendermint_channel_id.as_ref().unwrap(),
                                     );
                                 }
                             }

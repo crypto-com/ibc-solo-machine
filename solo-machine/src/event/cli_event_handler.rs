@@ -53,6 +53,23 @@ impl CliEventHandler {
 
                 print_stdout(table).context("unable to print table to stdout")?;
             }
+            Event::CloseChannelInitOnSoloMachine {
+                chain_id,
+                channel_id,
+            } => {
+                print_stream(
+                    &mut stdout,
+                    ColorSpec::new().set_bold(true),
+                    "Chain channel init closed!",
+                )?;
+                writeln!(stdout)?;
+                let mut table = Vec::new();
+
+                add_row(&mut table, "Chain ID", chain_id);
+                add_row(&mut table, "Solo Machine Channel Id", channel_id);
+                print_stdout(table.table().color_choice(self.color_choice))
+                    .context("unable to print table to stdout")?;
+            }
             Event::TokensMinted {
                 chain_id,
                 request_id,
@@ -267,12 +284,12 @@ impl CliEventHandler {
                 add_row(
                     &mut table,
                     "Solo machine channel ID",
-                    connection_details.solo_machine_channel_id,
+                    connection_details.solo_machine_channel_id.as_ref().unwrap(),
                 );
                 add_row(
                     &mut table,
                     "Tendermint channel ID",
-                    connection_details.tendermint_channel_id,
+                    connection_details.tendermint_channel_id.as_ref().unwrap(),
                 );
 
                 print_stdout(table.table().color_choice(self.color_choice))

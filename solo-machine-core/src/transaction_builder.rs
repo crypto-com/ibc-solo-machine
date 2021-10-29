@@ -40,8 +40,8 @@ use cosmos_sdk_proto::{
         core::{
             channel::v1::{
                 Channel, Counterparty as ChannelCounterparty, MsgAcknowledgement,
-                MsgChannelOpenAck, MsgChannelOpenInit, MsgRecvPacket, Order as ChannelOrder,
-                Packet, State as ChannelState,
+                MsgChannelCloseInit, MsgChannelOpenAck, MsgChannelOpenInit, MsgRecvPacket,
+                Order as ChannelOrder, Packet, State as ChannelState,
             },
             client::v1::{Height, MsgCreateClient, MsgUpdateClient},
             commitment::v1::MerklePrefix,
@@ -338,6 +338,31 @@ pub async fn msg_channel_open_init(
     build(signer, chain, &[message], memo, request_id).await
 }
 
+pub async fn msg_channel_close_init(
+    signer: impl Signer,
+    chain: &Chain,
+    memo: String,
+    request_id: Option<&str>,
+) -> Result<TxRaw> {
+    let port_id = chain.config.port_id.to_string();
+    let solo_machine_channel_id = chain
+        .connection_details
+        .clone()
+        .unwrap()
+        .solo_machine_channel_id
+        .as_ref()
+        .map(|s| s.to_string());
+    if solo_machine_channel_id.is_none() {
+        bail!("channel already closed");
+    }
+    let message = MsgChannelCloseInit {
+        port_id,
+        channel_id: solo_machine_channel_id.unwrap(),
+        signer: signer.to_account_address()?,
+    };
+    build(signer, chain, &[message], memo, request_id).await
+}
+
 pub async fn msg_channel_open_ack(
     transaction: &mut Transaction<'_, Db>,
     signer: impl Signer,
@@ -393,6 +418,14 @@ where
             chain.id
         )
     })?;
+    ensure!(
+        connection_details.solo_machine_channel_id.is_some(),
+        "can't find solo machine channel, channel is already closed"
+    );
+    ensure!(
+        connection_details.tendermint_channel_id.is_some(),
+        "can't find tendermint channel, channel is already closed"
+    );
 
     let sender = signer.to_account_address()?;
 
@@ -406,9 +439,17 @@ where
     let packet = Packet {
         sequence: chain.packet_sequence.into(),
         source_port: chain.config.port_id.to_string(),
-        source_channel: connection_details.tendermint_channel_id.to_string(),
+        source_channel: connection_details
+            .tendermint_channel_id
+            .as_ref()
+            .unwrap()
+            .to_string(),
         destination_port: chain.config.port_id.to_string(),
-        destination_channel: connection_details.solo_machine_channel_id.to_string(),
+        destination_channel: connection_details
+            .solo_machine_channel_id
+            .as_ref()
+            .unwrap()
+            .to_string(),
         data: serde_json::to_vec(&packet_data)?,
         timeout_height: Some(
             get_latest_height(chain, rpc_client)
@@ -451,19 +492,22 @@ pub async fn msg_token_receive(
             chain.id
         )
     })?;
+    ensure!(
+        connection_details.solo_machine_channel_id.is_some(),
+        "can't find solo machine channel, channel is ready closed"
+    );
 
-    let denom = chain.get_ibc_denom(denom).ok_or_else(|| {
-        anyhow!(
-            "connection is not established with chain with id {}",
-            chain.id
-        )
-    })?;
+    let denom = chain.get_ibc_denom(denom)?;
 
     let sender = signer.to_account_address()?;
 
     let message = MsgTransfer {
         source_port: chain.config.port_id.to_string(),
-        source_channel: connection_details.solo_machine_channel_id.to_string(),
+        source_channel: connection_details
+            .solo_machine_channel_id
+            .as_ref()
+            .unwrap()
+            .to_string(),
         token: Some(Coin {
             amount: amount.to_string(),
             denom,
@@ -714,18 +758,19 @@ async fn get_packet_acknowledgement_proof(
     packet_sequence: u64,
     request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
+    let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+        anyhow!(
+            "connection details for chain with id {} not found",
+            chain.id
+        )
+    })?;
+    ensure!(
+        connection_details.tendermint_channel_id.is_some(),
+        "can't find tendermint channel, channel is already closed"
+    );
     let mut acknowledgement_path = PacketAcknowledgementPath::new(
         &chain.config.port_id,
-        &chain
-            .connection_details
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow!(
-                    "connection details for chain with id {} not found",
-                    chain.id
-                )
-            })?
-            .tendermint_channel_id,
+        connection_details.tendermint_channel_id.as_ref().unwrap(),
         packet_sequence,
     );
     acknowledgement_path.apply_prefix(&"ibc".parse().unwrap());
@@ -756,18 +801,19 @@ async fn get_packet_commitment_proof(
 ) -> Result<Vec<u8>> {
     let commitment_bytes = packet.commitment_bytes()?;
 
+    let connection_details = chain.connection_details.as_ref().ok_or_else(|| {
+        anyhow!(
+            "connection details for chain with id {} not found",
+            chain.id
+        )
+    })?;
+    ensure!(
+        connection_details.tendermint_channel_id.is_some(),
+        "can't find tendermint channel id, channel is already closed"
+    );
     let mut commitment_path = PacketCommitmentPath::new(
         &chain.config.port_id,
-        &chain
-            .connection_details
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow!(
-                    "connection details for chain with id {} not found",
-                    chain.id
-                )
-            })?
-            .tendermint_channel_id,
+        connection_details.tendermint_channel_id.as_ref().unwrap(),
         chain.packet_sequence.into(),
     );
     commitment_path.apply_prefix(&"ibc".parse().unwrap());

@@ -75,6 +75,11 @@ impl EventHandler for EnvLogger {
                 "Initialized connection on solo machine [Connection ID = {}]",
                 connection_id
             ),
+            Event::CloseChannelInitOnSoloMachine { chain_id, channel_id } => log::info!(
+                "Close channel initialized on solo machine [Chain ID = {}] [Channel ID = {}]",
+                chain_id,
+                channel_id,
+            ),
             Event::ConfirmedConnectionOnTendermint { connection_id } => log::info!(
                 "Confirmed connection on IBC enabled chain [Connection ID = {}]",
                 connection_id
