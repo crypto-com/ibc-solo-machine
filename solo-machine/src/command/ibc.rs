@@ -3,6 +3,7 @@ use cli_table::{
     format::Justify, print_stdout, Cell, Color, ColorChoice, Row, RowStruct, Style, Table,
 };
 use k256::ecdsa::VerifyingKey;
+use primitive_types::U256;
 use serde_json::json;
 use solo_machine_core::{
     cosmos::crypto::{PublicKey, PublicKeyAlgo},
@@ -62,7 +63,7 @@ pub enum IbcCommand {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to send to IBC enabled chain
-        amount: u64,
+        amount: U256,
         /// Denom of tokens to send to IBC enabled chain
         denom: Identifier,
         /// Optional receiver address (if this is not provided, tokens will be sent to signer's address)
@@ -84,7 +85,7 @@ pub enum IbcCommand {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to receive from IBC enabled chain
-        amount: u64,
+        amount: U256,
         /// Denom of tokens to receive from IBC enabled chain
         denom: Identifier,
         /// Optional memo to include in transactions

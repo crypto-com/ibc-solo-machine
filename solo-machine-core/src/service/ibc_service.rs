@@ -13,6 +13,7 @@ use cosmos_sdk_proto::ibc::core::{
         Version as ConnectionVersion,
     },
 };
+use primitive_types::U256;
 use sqlx::{Executor, Transaction};
 use tendermint::{
     abci::{
@@ -456,7 +457,7 @@ impl IbcService {
         signer: impl Signer,
         chain_id: ChainId,
         request_id: Option<String>,
-        amount: u64,
+        amount: U256,
         denom: Identifier,
         receiver: Option<String>,
         memo: String,
@@ -556,7 +557,7 @@ impl IbcService {
         signer: impl Signer,
         chain_id: ChainId,
         request_id: Option<String>,
-        amount: u64,
+        amount: U256,
         denom: Identifier,
         memo: String,
     ) -> Result<String> {

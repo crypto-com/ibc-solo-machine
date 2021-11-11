@@ -2,6 +2,7 @@
 mod event_handler;
 
 use anyhow::{anyhow, Result};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -28,7 +29,7 @@ pub enum Event {
         /// Address of account on IBC enabled chain
         to_address: String,
         /// Amount of tokens minted
-        amount: u64,
+        amount: U256,
         /// Denom of tokens minted
         denom: Identifier,
         /// Hash of transaction on IBC enabled chain (in hex)
@@ -43,7 +44,7 @@ pub enum Event {
         /// Address of account on IBC enabled chain
         from_address: String,
         /// Amount of tokens minted
-        amount: u64,
+        amount: U256,
         /// Denom of tokens minted
         denom: Identifier,
         /// Hash of transaction on IBC enabled chain (in hex)

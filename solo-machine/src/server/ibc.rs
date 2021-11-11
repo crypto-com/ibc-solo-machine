@@ -3,6 +3,7 @@ tonic::include_proto!("ibc");
 use std::time::SystemTime;
 
 use k256::ecdsa::VerifyingKey;
+use primitive_types::U256;
 use solo_machine_core::{
     cosmos::crypto::{PublicKey, PublicKeyAlgo},
     ibc::core::ics24_host::identifier::ChainId,
@@ -72,7 +73,8 @@ where
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
         let request_id = request.request_id;
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
-        let amount = request.amount;
+        let amount = U256::from_dec_str(&request.amount)
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
         let denom = request
             .denom
             .parse()
@@ -108,7 +110,8 @@ where
             .map_err(|err: anyhow::Error| Status::invalid_argument(err.to_string()))?;
         let request_id = request.request_id;
         let memo = request.memo.unwrap_or_else(|| DEFAULT_MEMO.to_owned());
-        let amount = request.amount;
+        let amount = U256::from_dec_str(&request.amount)
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
         let denom = request
             .denom
             .parse()
@@ -197,7 +200,7 @@ where
                     request_id: op.request_id,
                     address: op.address,
                     denom: op.denom.to_string(),
-                    amount: op.amount,
+                    amount: op.amount.to_string(),
                     operation_type: op.operation_type.to_string(),
                     transaction_hash: op.transaction_hash,
                     created_at: Some(SystemTime::from(op.created_at).into()),
