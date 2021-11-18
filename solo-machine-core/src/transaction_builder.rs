@@ -56,6 +56,7 @@ use cosmos_sdk_proto::{
         },
     },
 };
+use primitive_types::U256;
 use prost_types::{Any, Duration};
 use serde::Serialize;
 use serde_json::json;
@@ -403,7 +404,7 @@ pub async fn msg_token_send<C>(
     signer: impl Signer,
     rpc_client: &C,
     chain: &mut Chain,
-    amount: u64,
+    amount: U256,
     denom: &Identifier,
     receiver: String,
     memo: String,
@@ -480,7 +481,7 @@ where
 pub async fn msg_token_receive(
     signer: impl Signer,
     chain: &Chain,
-    amount: u64,
+    amount: U256,
     denom: &Identifier,
     receiver: String,
     memo: String,

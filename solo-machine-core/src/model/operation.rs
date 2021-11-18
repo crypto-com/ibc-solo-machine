@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{ensure, Context, Error, Result};
 use chrono::{DateTime, Utc};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use sqlx::{types::Json, Executor, FromRow};
 
@@ -25,7 +26,7 @@ pub struct Operation {
     /// Denom of tokens
     pub denom: Identifier,
     /// Amount of tokens
-    pub amount: u64,
+    pub amount: U256,
     /// Type of operation
     pub operation_type: OperationType,
     /// On-chain transaction hash (in hex)
@@ -57,12 +58,14 @@ pub struct RawOperation {
 
 impl From<Operation> for RawOperation {
     fn from(op: Operation) -> Self {
+        let amount_bytes: [u8; 32] = op.amount.into();
+
         Self {
             id: op.id,
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.to_string(),
-            amount: op.amount.to_le_bytes().to_vec(),
+            amount: amount_bytes.to_vec(),
             operation_type: Json(op.operation_type),
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,
@@ -74,11 +77,11 @@ impl TryFrom<RawOperation> for Operation {
     type Error = Error;
 
     fn try_from(op: RawOperation) -> Result<Self, Self::Error> {
-        let mut amount_bytes = [0; 8];
+        let mut amount_bytes = [0; 32];
 
         ensure!(
-            op.amount.len() == 8,
-            "expected amount in u64 little endian bytes {}",
+            op.amount.len() == 32,
+            "expected amount in u256 little endian bytes {}",
             op.amount.len()
         );
 
@@ -89,7 +92,7 @@ impl TryFrom<RawOperation> for Operation {
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.parse()?,
-            amount: u64::from_le_bytes(amount_bytes),
+            amount: amount_bytes.into(),
             operation_type: op.operation_type.0,
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,
@@ -127,11 +130,13 @@ pub async fn add_operation<'e>(
     request_id: Option<&str>,
     address: &str,
     denom: &Identifier,
-    amount: u64,
+    amount: U256,
     operation_type: &OperationType,
     transaction_hash: &str,
 ) -> Result<()> {
     let operation_type = Json(operation_type);
+
+    let amount_bytes: [u8; 32] = amount.into();
 
     let rows_affected = sqlx::query(
         "INSERT INTO operations (request_id, address, denom, amount, operation_type, transaction_hash) VALUES ($1, $2, $3, $4, $5, $6)",
@@ -139,7 +144,7 @@ pub async fn add_operation<'e>(
     .bind(request_id)
     .bind(address)
     .bind(denom.to_string())
-    .bind(amount.to_le_bytes().to_vec())
+    .bind(amount_bytes.to_vec())
     .bind(operation_type)
     .bind(transaction_hash)
     .execute(executor)
