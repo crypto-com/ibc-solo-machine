@@ -124,7 +124,7 @@ impl PublicKey {
                 let mut sig = [0; 64];
                 sig.copy_from_slice(&signature_data.signature);
 
-                let signature = ed25519_dalek::Signature::new(sig);
+                let signature = ed25519_dalek::Signature::from(sig);
 
                 ed25519_dalek::Verifier::verify(public_key, message, &signature).map_err(Into::into)
             }
