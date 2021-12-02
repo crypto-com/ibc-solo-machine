@@ -80,7 +80,7 @@ impl IHeight for Height {
 
         ensure!(
             split.len() == 2,
-            "height should be of format {revision_number}-{revision_height}"
+            "height should be of format {{revision_number}}-{{revision_height}}"
         );
 
         Ok(Height {

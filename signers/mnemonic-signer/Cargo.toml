@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-anyhow = "1.0.45"
+anyhow = "1.0.51"
 async-trait = "0.1.51"
 bip32 = { version = "0.2.2", features = ["bip39"] }
 k256 = { version = "0.9.6", features = ["ecdsa"] }
