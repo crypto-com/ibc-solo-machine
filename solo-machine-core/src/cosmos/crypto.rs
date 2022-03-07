@@ -151,9 +151,8 @@ impl PublicKey {
             Self::EthSecp256k1(ref key) => {
                 use k256::EncodedPoint;
 
-                let encoded_point: EncodedPoint = key.into();
-                let hash =
-                    Keccak256::digest(&encoded_point.to_untagged_bytes().unwrap())[12..].to_vec();
+                let encoded_point: EncodedPoint = key.to_encoded_point(false);
+                let hash = Keccak256::digest(&encoded_point.as_bytes()[1..])[12..].to_vec();
 
                 Ok(hash)
             }
