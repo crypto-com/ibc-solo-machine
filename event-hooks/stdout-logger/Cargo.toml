@@ -9,6 +9,6 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-anyhow = "1.0.51"
-async-trait = "0.1.51"
+anyhow = "1.0.55"
+async-trait = "0.1.52"
 solo-machine-core = { path = "../../solo-machine-core" }

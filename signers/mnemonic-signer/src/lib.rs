@@ -15,8 +15,7 @@ use std::{env, str::FromStr, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use bip32::{DerivationPath, ExtendedPrivateKey, Language, Mnemonic};
-use k256::ecdsa::{signature::DigestSigner, Signature, SigningKey};
-use ripemd160::Digest;
+use k256::ecdsa::{Signature, SigningKey};
 use solo_machine_core::{
     cosmos::crypto::PublicKey,
     signer::{AddressAlgo, Message, SignerRegistrar},
@@ -107,11 +106,14 @@ impl Signer for MnemonicSigner {
         let signing_key = self.get_signing_key()?;
 
         let signature: Signature = match self.algo {
-            AddressAlgo::Secp256k1 => signing_key.sign_digest(sha2::Sha256::new().chain(message)),
+            AddressAlgo::Secp256k1 => <SigningKey as k256::ecdsa::signature::Signer<
+                k256::ecdsa::Signature,
+            >>::sign(&signing_key, message.as_ref()),
             #[cfg(feature = "ethermint")]
-            AddressAlgo::EthSecp256k1 => {
-                signing_key.sign_digest(sha3::Keccak256::new().chain(message))
-            }
+            AddressAlgo::EthSecp256k1 => <SigningKey as k256::ecdsa::signature::Signer<
+                k256::ecdsa::recoverable::Signature,
+            >>::sign(&signing_key, message.as_ref())
+            .into(),
         };
 
         Ok(signature.as_ref().to_vec())

@@ -19,9 +19,9 @@ use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::
 use k256::ecdsa::VerifyingKey;
 use prost::Message;
 use prost_types::Any;
-use ripemd160::{Digest, Ripemd160};
+use ripemd::Ripemd160;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 #[cfg(feature = "ethermint")]
 use sha3::Keccak256;
 

@@ -7,42 +7,42 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.51"
-async-trait = "0.1.51"
+anyhow = "1.0.55"
+async-trait = "0.1.52"
 bech32 = "0.8.1"
-chrono = { version = "0.4.19", default-features = false }
-cosmos-sdk-proto = "0.8.0"
+chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
+cosmos-sdk-proto = "0.9.0"
 ed25519-dalek = { version = "1.0.1", features = ["serde"] }
 hex = { version = "0.4.3", features = ["serde"] }
-k256 = { version = "0.9.6", features = ["ecdsa"] }
+k256 = { version = "0.10.2", features = ["ecdsa"] }
 num-rational = { version = "0.4.0", features = ["serde"] }
-primitive-types = { version = "0.10.1", features = ["serde"] }
+primitive-types = { version = "0.11.1", features = ["serde"] }
 prost = "0.9.0"
 prost-types = "0.9.0"
-rand = "0.8.4"
+rand = "0.8.5"
 regex = "1.5.4"
-ripemd160 = "0.9.1"
-rust_decimal = "1.18.0"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.72"
-sha2 = "0.9.8"
-sha3 = { version = "0.9.1", optional = true }
-sqlx = { version = "0.5.9", features = [
+ripemd = "0.1.1"
+rust_decimal = "1.22.0"
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.79"
+sha2 = "0.10.2"
+sha3 = { version = "0.10.1", optional = true }
+sqlx = { version = "0.5.11", features = [
     "json",
     "macros",
     "runtime-tokio-rustls",
     "sqlite",
     "chrono",
 ] }
-tendermint = "0.23.1"
-tendermint-light-client = "0.23.1"
-tendermint-rpc = { version = "0.23.1", features = ["http-client"] }
-tokio = { version = "1.14.0", features = ["sync"] }
-tonic = { version = "0.6.1", features = ["tls", "tls-roots"] }
+tendermint = "0.23.3"
+tendermint-light-client = "0.23.3"
+tendermint-rpc = { version = "0.23.3", features = ["http-client"] }
+tokio = { version = "1.17.0", features = ["sync"] }
+tonic = { version = "0.6.2", features = ["tls", "tls-roots"] }
 urlencoding = "2.1.0"
 
 [build-dependencies]
-tonic-build = "0.6.0"
+tonic-build = "0.6.2"
 
 [features]
 default = ["solomachine-v2"]

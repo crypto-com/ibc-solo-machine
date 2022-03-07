@@ -1,5 +1,3 @@
-use std::time::SystemTime;
-
 use cosmos_sdk_proto::ibc::{
     core::commitment::v1::MerkleRoot, lightclients::tendermint::v1::ConsensusState,
 };
@@ -12,11 +10,17 @@ pub trait IConsensusState: Sized {
 
 impl IConsensusState for ConsensusState {
     fn from_block_header(header: BlockHeader) -> Self {
+        let timestamp =
+            cosmos_sdk_proto::tendermint::google::protobuf::Timestamp::from(header.time);
+
         Self {
             root: Some(MerkleRoot {
                 hash: header.app_hash.value(),
             }),
-            timestamp: Some(Timestamp::from(SystemTime::from(header.time.0))),
+            timestamp: Some(Timestamp {
+                seconds: timestamp.seconds,
+                nanos: timestamp.nanos,
+            }),
             next_validators_hash: header.next_validators_hash.as_bytes().to_vec(),
         }
     }
