@@ -17,6 +17,8 @@ use anyhow::{anyhow, ensure, Error, Result};
 use bech32::{ToBase32, Variant};
 use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Sum as SignatureData;
 use k256::ecdsa::VerifyingKey;
+#[cfg(feature = "ethermint")]
+use k256::elliptic_curve::sec1::ToEncodedPoint;
 use prost::Message;
 use prost_types::Any;
 use ripemd::Ripemd160;
