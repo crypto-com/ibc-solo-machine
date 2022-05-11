@@ -17,11 +17,13 @@ use anyhow::{anyhow, ensure, Error, Result};
 use bech32::{ToBase32, Variant};
 use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Sum as SignatureData;
 use k256::ecdsa::VerifyingKey;
+#[cfg(feature = "ethermint")]
+use k256::elliptic_curve::sec1::ToEncodedPoint;
 use prost::Message;
 use prost_types::Any;
-use ripemd160::{Digest, Ripemd160};
+use ripemd::Ripemd160;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 #[cfg(feature = "ethermint")]
 use sha3::Keccak256;
 
@@ -151,9 +153,8 @@ impl PublicKey {
             Self::EthSecp256k1(ref key) => {
                 use k256::EncodedPoint;
 
-                let encoded_point: EncodedPoint = key.into();
-                let hash =
-                    Keccak256::digest(&encoded_point.to_untagged_bytes().unwrap())[12..].to_vec();
+                let encoded_point: EncodedPoint = key.to_encoded_point(false);
+                let hash = Keccak256::digest(&encoded_point.as_bytes()[1..])[12..].to_vec();
 
                 Ok(hash)
             }
