@@ -19,6 +19,7 @@ use crate::{
 
 #[derive(Debug, FromRow)]
 struct IbcData {
+    #[allow(dead_code)]
     path: String,
     data: Vec<u8>,
 }

@@ -63,6 +63,7 @@ pub enum IbcCommand {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to send to IBC enabled chain
+        #[structopt(parse(try_from_str = ::primitive_types::U256::from_dec_str))]
         amount: U256,
         /// Denom of tokens to send to IBC enabled chain
         denom: Identifier,
@@ -85,6 +86,7 @@ pub enum IbcCommand {
         /// Chain ID of IBC enabled chain
         chain_id: ChainId,
         /// Amount to receive from IBC enabled chain
+        #[structopt(parse(try_from_str = ::primitive_types::U256::from_dec_str))]
         amount: U256,
         /// Denom of tokens to receive from IBC enabled chain
         denom: Identifier,
