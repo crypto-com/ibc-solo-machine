@@ -1,7 +1,7 @@
-use cosmos_sdk_proto::ibc::{
-    core::commitment::v1::MerkleRoot, lightclients::tendermint::v1::ConsensusState,
+use ibc_proto::{
+    google::protobuf::Timestamp,
+    ibc::{core::commitment::v1::MerkleRoot, lightclients::tendermint::v1::ConsensusState},
 };
-use prost_types::Timestamp;
 use tendermint::block::Header as BlockHeader;
 
 pub trait IConsensusState: Sized {
@@ -10,16 +10,13 @@ pub trait IConsensusState: Sized {
 
 impl IConsensusState for ConsensusState {
     fn from_block_header(header: BlockHeader) -> Self {
-        let timestamp =
-            cosmos_sdk_proto::tendermint::google::protobuf::Timestamp::from(header.time);
-
         Self {
             root: Some(MerkleRoot {
-                hash: header.app_hash.value(),
+                hash: header.app_hash.into(),
             }),
             timestamp: Some(Timestamp {
-                seconds: timestamp.seconds,
-                nanos: timestamp.nanos,
+                seconds: header.time.unix_timestamp(),
+                nanos: header.time.unix_timestamp_nanos() as i32,
             }),
             next_validators_hash: header.next_validators_hash.as_bytes().to_vec(),
         }

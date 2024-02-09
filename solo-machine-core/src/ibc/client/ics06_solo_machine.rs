@@ -1,3 +1,3 @@
-pub mod v1;
-#[cfg(feature = "solomachine-v2")]
-pub mod v2;
+pub mod client_state;
+pub mod consensus_state;
+pub mod header;

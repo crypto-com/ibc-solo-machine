@@ -1,4 +1,4 @@
-use cosmos_sdk_proto::ibc::core::client::v1::MsgUpdateClient;
+use ibc_proto::ibc::core::client::v1::MsgUpdateClient;
 
 const TYPE_URL: &str = "/ibc.core.client.v1.MsgUpdateClient";
 

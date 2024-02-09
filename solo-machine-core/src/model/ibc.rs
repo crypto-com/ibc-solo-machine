@@ -1,5 +1,5 @@
 use anyhow::{ensure, Context, Result};
-use cosmos_sdk_proto::ibc::{
+use ibc_proto::ibc::{
     core::{channel::v1::Channel, client::v1::Height, connection::v1::ConnectionEnd},
     lightclients::tendermint::v1::{
         ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
@@ -30,7 +30,7 @@ pub async fn add_tendermint_client_state<'e>(
     client_id: &ClientId,
     client_state: &TendermintClientState,
 ) -> Result<()> {
-    let path: String = ClientStatePath::new(client_id).into();
+    let path: String = ClientStatePath::new(client_id).to_string();
     let data = proto_encode(client_state)?;
 
     add(executor, &path, &data).await
@@ -41,7 +41,7 @@ pub async fn get_tendermint_client_state<'e>(
     executor: impl Executor<'e, Database = Db>,
     client_id: &ClientId,
 ) -> Result<Option<TendermintClientState>> {
-    let path: String = ClientStatePath::new(client_id).into();
+    let path: String = ClientStatePath::new(client_id).to_string();
     get(executor, &path).await
 }
 
@@ -52,7 +52,7 @@ pub async fn add_tendermint_consensus_state<'e>(
     height: &Height,
     consensus_state: &TendermintConsensusState,
 ) -> Result<()> {
-    let path: String = ConsensusStatePath::new(client_id, height).into();
+    let path: String = ConsensusStatePath::new(client_id, height).to_string();
     let data = proto_encode(consensus_state)?;
 
     add(executor, &path, &data).await
@@ -64,7 +64,7 @@ pub async fn get_tendermint_consensus_state<'e>(
     client_id: &ClientId,
     height: &Height,
 ) -> Result<Option<TendermintConsensusState>> {
-    let path: String = ConsensusStatePath::new(client_id, height).into();
+    let path: String = ConsensusStatePath::new(client_id, height).to_string();
     get(executor, &path).await
 }
 
@@ -74,7 +74,7 @@ pub async fn add_connection<'e>(
     connection_id: &ConnectionId,
     connection: &ConnectionEnd,
 ) -> Result<()> {
-    let path: String = ConnectionPath::new(connection_id).into();
+    let path: String = ConnectionPath::new(connection_id).to_string();
     let data = proto_encode(connection)?;
 
     add(executor, &path, &data).await
@@ -85,7 +85,7 @@ pub async fn get_connection<'e>(
     executor: impl Executor<'e, Database = Db>,
     connection_id: &ConnectionId,
 ) -> Result<Option<ConnectionEnd>> {
-    let path: String = ConnectionPath::new(connection_id).into();
+    let path: String = ConnectionPath::new(connection_id).to_string();
     get(executor, &path).await
 }
 
@@ -95,7 +95,7 @@ pub async fn update_connection<'e>(
     connection_id: &ConnectionId,
     connection: &ConnectionEnd,
 ) -> Result<()> {
-    let path: String = ConnectionPath::new(connection_id).into();
+    let path: String = ConnectionPath::new(connection_id).to_string();
     let data = proto_encode(connection)?;
 
     update(executor, &path, &data).await
@@ -108,7 +108,7 @@ pub async fn add_channel<'e>(
     channel_id: &ChannelId,
     channel: &Channel,
 ) -> Result<()> {
-    let path: String = ChannelPath::new(port_id, channel_id).into();
+    let path: String = ChannelPath::new(port_id, channel_id).to_string();
     let data = proto_encode(channel)?;
 
     add(executor, &path, &data).await
@@ -120,7 +120,7 @@ pub async fn get_channel<'e>(
     port_id: &PortId,
     channel_id: &ChannelId,
 ) -> Result<Option<Channel>> {
-    let path: String = ChannelPath::new(port_id, channel_id).into();
+    let path: String = ChannelPath::new(port_id, channel_id).to_string();
     get(executor, &path).await
 }
 
@@ -131,7 +131,7 @@ pub async fn update_channel<'e>(
     channel_id: &ChannelId,
     channel: &Channel,
 ) -> Result<()> {
-    let path: String = ChannelPath::new(port_id, channel_id).into();
+    let path: String = ChannelPath::new(port_id, channel_id).to_string();
     let data = proto_encode(channel)?;
 
     update(executor, &path, &data).await

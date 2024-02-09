@@ -1,13 +1,13 @@
 use std::convert::TryFrom;
 
 use anyhow::{anyhow, ensure, Error, Result};
-use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Multi as MultiSignatureData;
+use ibc_proto::cosmos::{
+    crypto::multisig::LegacyAminoPubKey,
+    tx::signing::v1beta1::signature_descriptor::data::Multi as MultiSignatureData,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    cosmos::bit_array::BitArray,
-    proto::{cosmos::crypto::multisig::LegacyAminoPubKey, AnyConvert},
-};
+use crate::{cosmos::bit_array::BitArray, proto::AnyConvert};
 
 use super::PublicKey;
 

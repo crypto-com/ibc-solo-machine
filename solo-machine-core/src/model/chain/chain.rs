@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{anyhow, ensure, Context, Error, Result};
 use chrono::{DateTime, Utc};
-use cosmos_sdk_proto::cosmos::bank::v1beta1::{
+use ibc_proto::cosmos::bank::v1beta1::{
     query_client::QueryClient as BankQueryClient, QueryBalanceRequest,
 };
 use num_rational::Ratio;

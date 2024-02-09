@@ -1,4 +1,4 @@
-use cosmos_sdk_proto::ibc::core::connection::v1::MsgConnectionOpenAck;
+use ibc_proto::ibc::core::connection::v1::MsgConnectionOpenAck;
 
 const TYPE_URL: &str = "/ibc.core.connection.v1.MsgConnectionOpenAck";
 

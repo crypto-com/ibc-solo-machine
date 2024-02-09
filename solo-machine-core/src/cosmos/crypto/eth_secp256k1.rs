@@ -12,7 +12,7 @@ impl_any_conversion!(EthSecp256k1PubKey, ETH_SECP256K1_PUB_KEY_TYPE_URL);
 impl From<&VerifyingKey> for EthSecp256k1PubKey {
     fn from(key: &VerifyingKey) -> Self {
         Self {
-            key: key.to_bytes().to_vec(),
+            key: key.to_sec1_bytes().to_vec(),
         }
     }
 }

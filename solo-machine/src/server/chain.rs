@@ -214,9 +214,18 @@ where
                     gas_limit: Some(chain.config.fee.gas_limit),
                 }),
                 trust_level: Some(chain.config.trust_level.to_string()),
-                trusting_period: Some(chain.config.trusting_period.into()),
-                max_clock_drift: Some(chain.config.max_clock_drift.into()),
-                rpc_timeout: Some(chain.config.rpc_timeout.into()),
+                trusting_period: Some(
+                    prost_types::Duration::try_from(chain.config.trusting_period)
+                        .map_err(|err| Status::internal(err.to_string()))?,
+                ),
+                max_clock_drift: Some(
+                    prost_types::Duration::try_from(chain.config.max_clock_drift)
+                        .map_err(|err| Status::internal(err.to_string()))?,
+                ),
+                rpc_timeout: Some(
+                    prost_types::Duration::try_from(chain.config.rpc_timeout)
+                        .map_err(|err| Status::internal(err.to_string()))?,
+                ),
                 diversifier: Some(chain.config.diversifier),
                 port_id: Some(chain.config.port_id.to_string()),
                 trusted_height: Some(

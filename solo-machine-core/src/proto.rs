@@ -1,27 +1,27 @@
 #![allow(missing_docs)]
-pub mod cosmos {
-    pub mod crypto {
-        pub mod ed25519 {
-            tonic::include_proto!("cosmos.crypto.ed25519");
-        }
+// pub mod cosmos {
+//     pub mod crypto {
+//         pub mod ed25519 {
+//             tonic::include_proto!("cosmos.crypto.ed25519");
+//         }
 
-        pub mod multisig {
-            tonic::include_proto!("cosmos.crypto.multisig");
+//         pub mod multisig {
+//             tonic::include_proto!("cosmos.crypto.multisig");
 
-            pub mod v1beta1 {
-                tonic::include_proto!("cosmos.crypto.multisig.v1beta1");
-            }
-        }
+//             pub mod v1beta1 {
+//                 tonic::include_proto!("cosmos.crypto.multisig.v1beta1");
+//             }
+//         }
 
-        pub mod secp256k1 {
-            tonic::include_proto!("cosmos.crypto.secp256k1");
-        }
+//         pub mod secp256k1 {
+//             tonic::include_proto!("cosmos.crypto.secp256k1");
+//         }
 
-        pub mod secp256r1 {
-            tonic::include_proto!("cosmos.crypto.secp256r1");
-        }
-    }
-}
+//         pub mod secp256r1 {
+//             tonic::include_proto!("cosmos.crypto.secp256r1");
+//         }
+//     }
+// }
 
 #[cfg(feature = "ethermint")]
 pub mod ethermint {
@@ -40,20 +40,20 @@ pub mod ethermint {
     }
 }
 
-#[cfg(feature = "solomachine-v2")]
-pub mod ibc {
-    pub mod lightclients {
-        pub mod solomachine {
-            pub mod v2 {
-                tonic::include_proto!("ibc.lightclients.solomachine.v2");
-            }
-        }
-    }
-}
+// #[cfg(feature = "solomachine-v2")]
+// pub mod ibc {
+//     pub mod lightclients {
+//         pub mod solomachine {
+//             pub mod v2 {
+//                 tonic::include_proto!("ibc.lightclients.solomachine.v2");
+//             }
+//         }
+//     }
+// }
 
 use anyhow::{Context, Result};
+use ibc_proto::google::protobuf::Any;
 use prost::Message;
-use prost_types::Any;
 
 pub fn proto_encode<M: Message>(message: &M) -> Result<Vec<u8>> {
     let mut buf = Vec::with_capacity(message.encoded_len());
@@ -72,7 +72,7 @@ pub trait AnyConvert: Sized {
 macro_rules! impl_any_conversion {
     ($type: ty, $type_url: ident) => {
         impl $crate::proto::AnyConvert for $type {
-            fn from_any(value: &::prost_types::Any) -> ::anyhow::Result<Self> {
+            fn from_any(value: &::ibc_proto::google::protobuf::Any) -> ::anyhow::Result<Self> {
                 ::anyhow::ensure!(
                     value.type_url == $type_url,
                     "invalid type url for `Any` type: expected `{}` and found `{}`",
@@ -83,8 +83,8 @@ macro_rules! impl_any_conversion {
                 <Self as ::prost::Message>::decode(value.value.as_slice()).map_err(Into::into)
             }
 
-            fn to_any(&self) -> ::anyhow::Result<::prost_types::Any> {
-                Ok(::prost_types::Any {
+            fn to_any(&self) -> ::anyhow::Result<::ibc_proto::google::protobuf::Any> {
+                Ok(::ibc_proto::google::protobuf::Any {
                     type_url: $type_url.to_owned(),
                     value: $crate::proto::proto_encode(self)?,
                 })

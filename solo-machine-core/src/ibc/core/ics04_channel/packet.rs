@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use cosmos_sdk_proto::ibc::core::channel::v1::Packet;
+use ibc_proto::ibc::core::channel::v1::Packet;
 use sha2::{Digest, Sha256};
 
 pub trait IPacket {
