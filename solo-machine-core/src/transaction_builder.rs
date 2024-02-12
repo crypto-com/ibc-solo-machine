@@ -190,21 +190,9 @@ pub async fn msg_create_tendermint_client(
     let client_state = TendermintClientState {
         chain_id: chain.id.to_string(),
         trust_level,
-        trusting_period: Some(
-            chain
-                .config
-                .trusting_period
-                .try_into()
-                .context("invalid trusting period")?,
-        ),
+        trusting_period: Some(chain.config.trusting_period.into()),
         unbonding_period,
-        max_clock_drift: Some(
-            chain
-                .config
-                .max_clock_drift
-                .try_into()
-                .context("invalid max clock drift")?,
-        ),
+        max_clock_drift: Some(chain.config.max_clock_drift.into()),
         frozen_height: Some(Height::zero()),
         latest_height: Some(latest_height),
         proof_specs: proof_specs(),
@@ -777,7 +765,7 @@ async fn get_packet_acknowledgement_proof(
         connection_details.tendermint_channel_id.as_ref().unwrap(),
         packet_sequence,
     );
-    acknowledgement_path.apply_prefix(&"ibc")?;
+    acknowledgement_path.apply_prefix("ibc")?;
 
     let acknowledgement_bytes = Sha256::digest(&acknowledgement).to_vec();
 

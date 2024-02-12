@@ -101,7 +101,7 @@ impl PublicKey {
     }
 
     pub fn address(&self) -> Result<String> {
-        Ok(hex::encode(&self.address_bytes()?))
+        Ok(hex::encode(self.address_bytes()?))
     }
 
     pub fn account_address(&self, prefix: &str) -> Result<String> {
@@ -159,12 +159,12 @@ impl PublicKey {
                 Ok(hash)
             }
             Self::Secp256k1(ref key) => {
-                Ok(Ripemd160::digest(&Sha256::digest(&key.to_sec1_bytes())).to_vec())
+                Ok(Ripemd160::digest(Sha256::digest(&key.to_sec1_bytes())).to_vec())
             }
             Self::Ed25519(ref key) => Ok(Sha256::digest(key.as_bytes()).to_vec()),
             Self::Multisig(ref key) => {
                 let multisig_key: LegacyAminoPubKey = key.try_into()?;
-                let bytes = Sha256::digest(&proto_encode(&multisig_key)?);
+                let bytes = Sha256::digest(proto_encode(&multisig_key)?);
                 Ok(bytes[..20].to_vec())
             }
         }
