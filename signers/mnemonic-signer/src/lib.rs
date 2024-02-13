@@ -15,7 +15,7 @@ use std::{env, str::FromStr, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use bip32::{DerivationPath, ExtendedPrivateKey, Language, Mnemonic};
-use k256::{ecdsa::SigningKey, schnorr::signature::SignatureEncoding};
+use k256::ecdsa::SigningKey;
 use solo_machine_core::{
     cosmos::crypto::PublicKey,
     signer::{AddressAlgo, Message, SignerRegistrar},

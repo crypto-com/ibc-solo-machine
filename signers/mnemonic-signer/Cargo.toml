@@ -19,5 +19,5 @@ sha3 = { version = "0.10.8", optional = true }
 solo-machine-core = { path = "../../solo-machine-core" }
 
 [features]
-default = ["ethermint"]
+default = []
 ethermint = ["sha3", "solo-machine-core/ethermint"]

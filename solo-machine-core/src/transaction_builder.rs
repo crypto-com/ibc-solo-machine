@@ -197,8 +197,8 @@ pub async fn msg_create_tendermint_client(
         latest_height: Some(latest_height),
         proof_specs: proof_specs(),
         upgrade_path: vec!["upgrade".to_string(), "upgradedIBCState".to_string()],
-        allow_update_after_expiry: false,
-        allow_update_after_misbehaviour: false,
+        allow_update_after_expiry: true,
+        allow_update_after_misbehaviour: true,
     };
 
     let consensus_state = TendermintConsensusState::from_block_header(latest_header);
@@ -775,7 +775,7 @@ async fn get_packet_acknowledgement_proof(
         diversifier: chain.config.diversifier.to_owned(),
         path: acknowledgement_path
             .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {}", acknowledgement_path))?
+            .ok_or_else(|| anyhow!("invalid path {:?}", acknowledgement_path))?
             .as_bytes()
             .to_vec(),
         data: acknowledgement_bytes,
@@ -815,7 +815,7 @@ async fn get_packet_commitment_proof(
         diversifier: chain.config.diversifier.to_owned(),
         path: commitment_path
             .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {}", commitment_path))?
+            .ok_or_else(|| anyhow!("invalid path {:?}", commitment_path))?
             .as_bytes()
             .to_vec(),
         data: commitment_bytes,
@@ -852,7 +852,7 @@ async fn get_channel_proof<'e>(
         diversifier: chain.config.diversifier.to_owned(),
         path: channel_path
             .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {}", channel_path))?
+            .ok_or_else(|| anyhow!("invalid path {:?}", channel_path))?
             .as_bytes()
             .to_vec(),
         data: channel_bytes,
@@ -883,7 +883,7 @@ async fn get_connection_proof<'e>(
         diversifier: chain.config.diversifier.to_owned(),
         path: connection_path
             .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {}", connection_path))?
+            .ok_or_else(|| anyhow!("invalid path {:?}", connection_path))?
             .as_bytes()
             .to_vec(),
         data: connection_bytes,
@@ -906,7 +906,7 @@ async fn get_client_proof<'e>(
     let mut client_state_path = ClientStatePath::new(client_id);
     client_state_path.apply_prefix("ibc")?;
 
-    let client_state_bytes = proto_encode(&client_state)?;
+    let client_state_bytes = proto_encode(&client_state.to_any()?)?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
@@ -914,7 +914,7 @@ async fn get_client_proof<'e>(
         diversifier: chain.config.diversifier.to_owned(),
         path: client_state_path
             .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {}", client_state_path))?
+            .ok_or_else(|| anyhow!("invalid path {:?}", client_state_path))?
             .as_bytes()
             .to_vec(),
         data: client_state_bytes,
@@ -952,7 +952,7 @@ async fn get_consensus_proof(
     let mut consensus_state_path = ConsensusStatePath::new(client_id, &height);
     consensus_state_path.apply_prefix("ibc")?;
 
-    let consensus_state_bytes = proto_encode(&consensus_state)?;
+    let consensus_state_bytes = proto_encode(&consensus_state.to_any()?)?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
@@ -960,7 +960,7 @@ async fn get_consensus_proof(
         diversifier: chain.config.diversifier.to_owned(),
         path: consensus_state_path
             .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {}", consensus_state_path))?
+            .ok_or_else(|| anyhow!("invalid path {:?}", consensus_state_path))?
             .as_bytes()
             .to_vec(),
         data: consensus_state_bytes,

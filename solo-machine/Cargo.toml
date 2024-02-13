@@ -25,9 +25,7 @@ prost = "0.12.3"
 prost-types = "0.12.3"
 rust_decimal = "1.33.1"
 serde_json = "1.0.111"
-solo-machine-core = { path = "../solo-machine-core", features = [
-    "solomachine-v2",
-] }
+solo-machine-core = { path = "../solo-machine-core" }
 structopt = "0.3.26"
 tendermint = "0.34.0"
 termcolor = "1.4.0"
@@ -35,7 +33,7 @@ tokio = { version = "1.35.1", features = ["fs", "macros", "rt-multi-thread"] }
 tonic = { version = "0.10.2", features = ["tls", "tls-roots"] }
 
 [features]
-default = ["ethermint"]
+default = []
 ethermint = ["solo-machine-core/ethermint"]
 postgres = ["solo-machine-core/postgres"]
 

@@ -67,7 +67,7 @@ impl Chain {
             denom,
         );
 
-        let hash = Sha256::digest(denom_trace.to_string().as_bytes());
+        let hash = Sha256::digest(denom_trace.get_key(0).unwrap().as_bytes());
 
         Ok(format!("ibc/{}", hex::encode_upper(hash)))
     }

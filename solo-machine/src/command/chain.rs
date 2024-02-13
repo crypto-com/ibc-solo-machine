@@ -276,10 +276,7 @@ impl ChainCommand {
                                     add_row(
                                         &mut table,
                                         "Solo machine client ID",
-                                        connection_details
-                                            .solo_machine_channel_id
-                                            .as_ref()
-                                            .unwrap(),
+                                        &connection_details.solo_machine_client_id,
                                     );
                                     add_row(
                                         &mut table,

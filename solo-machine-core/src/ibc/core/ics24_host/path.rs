@@ -1,8 +1,4 @@
-use std::{
-    fmt,
-    ops::{Deref, DerefMut},
-    str::FromStr,
-};
+use std::ops::{Deref, DerefMut};
 
 use anyhow::{ensure, Error};
 use ibc_proto::ibc::core::{client::v1::Height, commitment::v1::MerklePath};
@@ -20,6 +16,12 @@ use super::identifier::{ChannelId, ClientId, ConnectionId, Identifier, PortId};
 pub struct Path(MerklePath);
 
 impl Path {
+    /// Returns a new path from the given key path
+    pub fn new_from_str(key_path: String) -> Self {
+        Path(MerklePath {
+            key_path: vec![key_path],
+        })
+    }
     /// Applies the given prefix to path
     pub fn apply_prefix(&mut self, prefix: &str) -> Result<(), Error> {
         ensure!(!prefix.trim().is_empty(), "prefix cannot be empty");
@@ -57,31 +59,32 @@ impl DerefMut for Path {
     }
 }
 
-impl FromStr for Path {
-    type Err = Error;
+// impl FromStr for Path {
+//     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ensure!(!s.trim().is_empty(), "path cannot be empty");
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+//         ensure!(!s.trim().is_empty(), "path cannot be empty");
 
-        Ok(Path(MerklePath {
-            key_path: vec![s.trim().to_string()],
-        }))
-    }
-}
+//         Ok(Path(MerklePath {
+//             key_path: vec![s.trim().to_string()],
+//         }))
+//     }
+// }
 
-impl fmt::Display for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for key in &self.0.key_path {
-            write!(f, "/{}", urlencoding::encode(key))?;
-        }
+// impl fmt::Display for Path {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         for key in &self.0.key_path {
+//             write!(f, "/{}", urlencoding::encode(key))?;
+//         }
 
-        Ok(())
-    }
-}
+//         Ok(())
+//     }
+// }
 
 macro_rules! impl_path {
     ($doc: expr, $name: ident) => {
         #[doc = $doc]
+        #[derive(Debug, Clone)]
         pub struct $name(Path);
 
         impl $name {
@@ -95,11 +98,11 @@ macro_rules! impl_path {
             }
         }
 
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{}", self.0)
-            }
-        }
+        // impl fmt::Display for $name {
+        //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        //         write!(f, "{}", self.0)
+        //     }
+        // }
 
         impl Deref for $name {
             type Target = Path;
@@ -122,7 +125,10 @@ impl_path!("Path for storing client type", ClientTypePath);
 impl ClientTypePath {
     /// Creates a new client type path from client id
     pub fn new(client_id: ClientId) -> Self {
-        Self(format!("clients/{}/clientType", client_id).parse().unwrap())
+        Self(Path::new_from_str(format!(
+            "clients/{}/clientType",
+            client_id
+        )))
     }
 }
 
@@ -131,11 +137,10 @@ impl_path!("Path for storing client state", ClientStatePath);
 impl ClientStatePath {
     /// Creates a new client state path from client id
     pub fn new(client_id: &ClientId) -> Self {
-        Self(
-            format!("clients/{}/clientState", client_id)
-                .parse()
-                .unwrap(),
-        )
+        Self(Path::new_from_str(format!(
+            "clients/{}/clientState",
+            client_id
+        )))
     }
 }
 
@@ -144,15 +149,11 @@ impl_path!("Path for storing consensus state", ConsensusStatePath);
 impl ConsensusStatePath {
     /// Creates a new consensus state path from client id and height
     pub fn new(client_id: &ClientId, height: &Height) -> Self {
-        Self(
-            format!(
-                "clients/{}/consensusStates/{}",
-                client_id,
-                height.to_string()
-            )
-            .parse()
-            .unwrap(),
-        )
+        Self(Path::new_from_str(format!(
+            "clients/{}/consensusStates/{}",
+            client_id,
+            height.to_string()
+        )))
     }
 }
 
@@ -160,7 +161,7 @@ impl_path!("Path for storing connection", ConnectionPath);
 
 impl ConnectionPath {
     pub fn new(connection_id: &ConnectionId) -> Self {
-        Self(format!("connections/{}", connection_id).parse().unwrap())
+        Self(Path::new_from_str(format!("connections/{}", connection_id)))
     }
 }
 
@@ -168,11 +169,10 @@ impl_path!("Path for storing channel", ChannelPath);
 
 impl ChannelPath {
     pub fn new(port_id: &PortId, channel_id: &ChannelId) -> Self {
-        Self(
-            format!("channelEnds/ports/{}/channels/{}", port_id, channel_id)
-                .parse()
-                .unwrap(),
-        )
+        Self(Path::new_from_str(format!(
+            "channelEnds/ports/{}/channels/{}",
+            port_id, channel_id
+        )))
     }
 }
 
@@ -180,14 +180,10 @@ impl_path!("Path for storing packet commitments", PacketCommitmentPath);
 
 impl PacketCommitmentPath {
     pub fn new(port_id: &PortId, channel_id: &ChannelId, packet_sequence: u64) -> Self {
-        Self(
-            format!(
-                "commitments/ports/{}/channels/{}/sequences/{}",
-                port_id, channel_id, packet_sequence
-            )
-            .parse()
-            .unwrap(),
-        )
+        Self(Path::new_from_str(format!(
+            "commitments/ports/{}/channels/{}/sequences/{}",
+            port_id, channel_id, packet_sequence
+        )))
     }
 }
 
@@ -195,11 +191,10 @@ impl_path!("Denom trace of tokens transferred to IBC chain", DenomTrace);
 
 impl DenomTrace {
     pub fn new(port_id: &PortId, channel_id: &ChannelId, denom: &Identifier) -> Self {
-        Self(
-            format!("{}/{}/{}", port_id, channel_id, denom)
-                .parse()
-                .unwrap(),
-        )
+        Self(Path::new_from_str(format!(
+            "{}/{}/{}",
+            port_id, channel_id, denom
+        )))
     }
 }
 
@@ -210,13 +205,9 @@ impl_path!(
 
 impl PacketAcknowledgementPath {
     pub fn new(port_id: &PortId, channel_id: &ChannelId, packet_sequence: u64) -> Self {
-        Self(
-            format!(
-                "acks/ports/{}/channels/{}/sequences/{}",
-                port_id, channel_id, packet_sequence
-            )
-            .parse()
-            .unwrap(),
-        )
+        Self(Path::new_from_str(format!(
+            "acks/ports/{}/channels/{}/sequences/{}",
+            port_id, channel_id, packet_sequence
+        )))
     }
 }
