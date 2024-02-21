@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, convert::TryFrom};
 
 use anyhow::{anyhow, ensure, Context, Error};
-use cosmos_sdk_proto::ibc::core::client::v1::Height;
+use ibc_proto::ibc::core::client::v1::Height;
 use tendermint::block::Height as BlockHeight;
 
 pub trait IHeight: Sized {

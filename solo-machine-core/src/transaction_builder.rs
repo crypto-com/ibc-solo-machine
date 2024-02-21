@@ -1,22 +1,8 @@
 use std::convert::TryInto;
 
-#[cfg(feature = "solomachine-v2")]
-use crate::proto::ibc::lightclients::solomachine::v2::{
-    ChannelStateData, ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
-    ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
-    Header as SoloMachineHeader, HeaderData, PacketAcknowledgementData, PacketCommitmentData,
-    SignBytes, TimestampedSignatureData,
-};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use chrono::{DateTime, Utc};
-#[cfg(not(feature = "solomachine-v2"))]
-use cosmos_sdk_proto::ibc::lightclients::solomachine::v1::{
-    ChannelStateData, ClientState as SoloMachineClientState, ClientStateData, ConnectionStateData,
-    ConsensusState as SoloMachineConsensusState, ConsensusStateData, DataType,
-    Header as SoloMachineHeader, HeaderData, PacketAcknowledgementData, PacketCommitmentData,
-    SignBytes, TimestampedSignatureData,
-};
-use cosmos_sdk_proto::{
+use ibc_proto::{
     cosmos::{
         auth::v1beta1::{query_client::QueryClient as AuthQueryClient, QueryAccountRequest},
         base::v1beta1::Coin,
@@ -35,6 +21,7 @@ use cosmos_sdk_proto::{
             },
         },
     },
+    google::protobuf::{Any, Duration},
     ibc::{
         applications::transfer::v1::MsgTransfer,
         core::{
@@ -50,19 +37,25 @@ use cosmos_sdk_proto::{
                 MsgConnectionOpenInit, Version as ConnectionVersion,
             },
         },
-        lightclients::tendermint::v1::{
-            ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
-            Fraction,
+        lightclients::{
+            solomachine::v3::{
+                ClientState as SoloMachineClientState, ConsensusState as SoloMachineConsensusState,
+                Header as SoloMachineHeader, HeaderData, SignBytes, TimestampedSignatureData,
+            },
+            tendermint::v1::{
+                ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
+                Fraction,
+            },
         },
     },
 };
 use primitive_types::U256;
-use prost_types::{Any, Duration};
 use serde::Serialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::{Executor, Transaction};
 use tendermint::block::Header;
-use tendermint_light_client::supervisor::Instance;
+use tendermint_light_client::instance::Instance;
 use tendermint_rpc::Client;
 
 use crate::{
@@ -108,12 +101,8 @@ pub async fn msg_create_solo_machine_client(
 
     let client_state = SoloMachineClientState {
         sequence: chain.sequence.into(),
-        #[cfg(not(feature = "solomachine-v2"))]
-        frozen_sequence: 0,
-        #[cfg(feature = "solomachine-v2")]
         is_frozen: false,
         consensus_state: Some(consensus_state),
-        allow_update_after_proposal: true,
     };
     let any_client_state = client_state.to_any()?;
 
@@ -142,8 +131,6 @@ pub async fn msg_update_solo_machine_client<'e>(
         );
     }
 
-    let sequence = chain.sequence.into();
-
     let any_public_key = match new_public_key {
         Some(new_public_key) => new_public_key.to_any()?,
         None => signer.to_public_key()?.to_any()?,
@@ -161,7 +148,6 @@ pub async fn msg_update_solo_machine_client<'e>(
     *chain = chain::increment_sequence(executor, &chain.id).await?;
 
     let header = SoloMachineHeader {
-        sequence,
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         signature,
         new_public_key: Some(any_public_key),
@@ -179,7 +165,7 @@ pub async fn msg_update_solo_machine_client<'e>(
 
     let message = MsgUpdateClient {
         client_id: connection_details.solo_machine_client_id.to_string(),
-        header: Some(any_header),
+        client_message: Some(any_header),
         signer: signer.to_account_address()?,
     };
 
@@ -200,6 +186,7 @@ pub async fn msg_create_tendermint_client(
     let latest_header = get_latest_header(instance)?;
     let latest_height = get_block_height(chain, &latest_header);
 
+    #[allow(deprecated)]
     let client_state = TendermintClientState {
         chain_id: chain.id.to_string(),
         trust_level,
@@ -210,8 +197,8 @@ pub async fn msg_create_tendermint_client(
         latest_height: Some(latest_height),
         proof_specs: proof_specs(),
         upgrade_path: vec!["upgrade".to_string(), "upgradedIBCState".to_string()],
-        allow_update_after_expiry: false,
-        allow_update_after_misbehaviour: false,
+        allow_update_after_expiry: true,
+        allow_update_after_misbehaviour: true,
     };
 
     let consensus_state = TendermintConsensusState::from_block_header(latest_header);
@@ -259,31 +246,31 @@ pub async fn msg_connection_open_ack(
     request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let tendermint_client_state =
-        ibc_handler::get_tendermint_client_state(&mut *transaction, tendermint_client_id)
+        ibc_handler::get_tendermint_client_state(&mut **transaction, tendermint_client_id)
             .await?
             .ok_or_else(|| anyhow!("client for client id {} not found", tendermint_client_id))?;
 
     let proof_height = Height::new(0, chain.sequence.into());
 
     let proof_try = get_connection_proof(
-        &mut *transaction,
+        &mut **transaction,
         &signer,
         chain,
         tendermint_connection_id,
         request_id,
     )
     .await?;
-    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
+    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
 
     let proof_client = get_client_proof(
-        &mut *transaction,
+        &mut **transaction,
         &signer,
         chain,
         tendermint_client_id,
         request_id,
     )
     .await?;
-    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
+    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
 
     let proof_consensus = get_consensus_proof(
         &mut *transaction,
@@ -293,7 +280,7 @@ pub async fn msg_connection_open_ack(
         request_id,
     )
     .await?;
-    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
+    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
 
     let message = MsgConnectionOpenAck {
         connection_id: solo_machine_connection_id.to_string(),
@@ -309,6 +296,7 @@ pub async fn msg_connection_open_ack(
         proof_consensus,
         consensus_height: tendermint_client_state.latest_height,
         signer: signer.to_account_address()?,
+        host_consensus_state_proof: Vec::new(),
     };
 
     build(signer, chain, &[message], memo, request_id).await
@@ -376,14 +364,14 @@ pub async fn msg_channel_open_ack(
     let proof_height = Height::new(0, chain.sequence.into());
 
     let proof_try = get_channel_proof(
-        &mut *transaction,
+        &mut **transaction,
         &signer,
         chain,
         tendermint_channel_id,
         request_id,
     )
     .await?;
-    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
+    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
 
     let message = MsgChannelOpenAck {
         port_id: chain.config.port_id.to_string(),
@@ -435,6 +423,7 @@ where
         amount: amount.to_string(),
         sender: sender.clone(),
         receiver,
+        memo: memo.clone(),
     };
 
     let packet = Packet {
@@ -465,8 +454,8 @@ where
 
     let proof_height = Height::new(0, chain.sequence.into());
 
-    *chain = chain::increment_sequence(&mut *transaction, &chain.id).await?;
-    *chain = chain::increment_packet_sequence(&mut *transaction, &chain.id).await?;
+    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
+    *chain = chain::increment_packet_sequence(&mut **transaction, &chain.id).await?;
 
     let message = MsgRecvPacket {
         packet: Some(packet),
@@ -517,6 +506,7 @@ pub async fn msg_token_receive(
         receiver,
         timeout_height: Some(Height::new(0, u64::from(chain.sequence) + 1)),
         timeout_timestamp: 0,
+        memo: memo.clone(),
     };
 
     build(signer, chain, &[message], memo, request_id).await
@@ -636,6 +626,7 @@ fn build_auth_info(
     Ok(AuthInfo {
         signer_infos: vec![signer_info],
         fee: Some(fee),
+        tip: None,
     })
 }
 
@@ -774,21 +765,20 @@ async fn get_packet_acknowledgement_proof(
         connection_details.tendermint_channel_id.as_ref().unwrap(),
         packet_sequence,
     );
-    acknowledgement_path.apply_prefix(&"ibc".parse().unwrap());
+    acknowledgement_path.apply_prefix("ibc")?;
 
-    let acknowledgement_data = PacketAcknowledgementData {
-        path: acknowledgement_path.into_bytes(),
-        acknowledgement,
-    };
-
-    let acknowledgement_data_bytes = proto_encode(&acknowledgement_data)?;
+    let acknowledgement_bytes = Sha256::digest(&acknowledgement).to_vec();
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::PacketAcknowledgement.into(),
-        data: acknowledgement_data_bytes,
+        path: acknowledgement_path
+            .get_key(1)
+            .ok_or_else(|| anyhow!("invalid path {:?}", acknowledgement_path))?
+            .as_bytes()
+            .to_vec(),
+        data: acknowledgement_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
@@ -817,21 +807,18 @@ async fn get_packet_commitment_proof(
         connection_details.tendermint_channel_id.as_ref().unwrap(),
         chain.packet_sequence.into(),
     );
-    commitment_path.apply_prefix(&"ibc".parse().unwrap());
-
-    let packet_commitment_data = PacketCommitmentData {
-        path: commitment_path.into_bytes(),
-        commitment: commitment_bytes,
-    };
-
-    let packet_commitment_data_bytes = proto_encode(&packet_commitment_data)?;
+    commitment_path.apply_prefix("ibc")?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::PacketCommitment.into(),
-        data: packet_commitment_data_bytes,
+        path: commitment_path
+            .get_key(1)
+            .ok_or_else(|| anyhow!("invalid path {:?}", commitment_path))?
+            .as_bytes()
+            .to_vec(),
+        data: commitment_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
@@ -855,21 +842,20 @@ async fn get_channel_proof<'e>(
         })?;
 
     let mut channel_path = ChannelPath::new(&chain.config.port_id, channel_id);
-    channel_path.apply_prefix(&"ibc".parse().unwrap());
+    channel_path.apply_prefix("ibc")?;
 
-    let channel_state_data = ChannelStateData {
-        path: channel_path.into_bytes(),
-        channel: Some(channel),
-    };
-
-    let channel_state_data_bytes = proto_encode(&channel_state_data)?;
+    let channel_bytes = proto_encode(&channel)?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::ChannelState.into(),
-        data: channel_state_data_bytes,
+        path: channel_path
+            .get_key(1)
+            .ok_or_else(|| anyhow!("invalid path {:?}", channel_path))?
+            .as_bytes()
+            .to_vec(),
+        data: channel_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
@@ -887,21 +873,20 @@ async fn get_connection_proof<'e>(
         .ok_or_else(|| anyhow!("connection with id {} not found", connection_id))?;
 
     let mut connection_path = ConnectionPath::new(connection_id);
-    connection_path.apply_prefix(&"ibc".parse().unwrap());
+    connection_path.apply_prefix("ibc")?;
 
-    let connection_state_data = ConnectionStateData {
-        path: connection_path.into_bytes(),
-        connection: Some(connection),
-    };
-
-    let connection_state_data_bytes = proto_encode(&connection_state_data)?;
+    let connection_bytes = proto_encode(&connection)?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::ConnectionState.into(),
-        data: connection_state_data_bytes,
+        path: connection_path
+            .get_key(1)
+            .ok_or_else(|| anyhow!("invalid path {:?}", connection_path))?
+            .as_bytes()
+            .to_vec(),
+        data: connection_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
@@ -916,25 +901,23 @@ async fn get_client_proof<'e>(
 ) -> Result<Vec<u8>> {
     let client_state = ibc_handler::get_tendermint_client_state(executor, client_id)
         .await?
-        .ok_or_else(|| anyhow!("client with id {} not found", client_id))?
-        .to_any()?;
+        .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
 
     let mut client_state_path = ClientStatePath::new(client_id);
-    client_state_path.apply_prefix(&"ibc".parse().unwrap());
+    client_state_path.apply_prefix("ibc")?;
 
-    let client_state_data = ClientStateData {
-        path: client_state_path.into_bytes(),
-        client_state: Some(client_state),
-    };
-
-    let client_state_data_bytes = proto_encode(&client_state_data)?;
+    let client_state_bytes = proto_encode(&client_state.to_any()?)?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::ClientState.into(),
-        data: client_state_data_bytes,
+        path: client_state_path
+            .get_key(1)
+            .ok_or_else(|| anyhow!("invalid path {:?}", client_state_path))?
+            .as_bytes()
+            .to_vec(),
+        data: client_state_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
@@ -947,7 +930,7 @@ async fn get_consensus_proof(
     client_id: &ClientId,
     request_id: Option<&str>,
 ) -> Result<Vec<u8>> {
-    let client_state = ibc_handler::get_tendermint_client_state(&mut *transaction, client_id)
+    let client_state = ibc_handler::get_tendermint_client_state(&mut **transaction, client_id)
         .await?
         .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
 
@@ -956,7 +939,7 @@ async fn get_consensus_proof(
         .ok_or_else(|| anyhow!("client state does not contain latest height"))?;
 
     let consensus_state =
-        ibc_handler::get_tendermint_consensus_state(&mut *transaction, client_id, &height)
+        ibc_handler::get_tendermint_consensus_state(&mut **transaction, client_id, &height)
             .await?
             .ok_or_else(|| {
                 anyhow!(
@@ -964,25 +947,23 @@ async fn get_consensus_proof(
                     client_id,
                     height.to_string(),
                 )
-            })?
-            .to_any()?;
+            })?;
 
     let mut consensus_state_path = ConsensusStatePath::new(client_id, &height);
-    consensus_state_path.apply_prefix(&"ibc".parse().unwrap());
+    consensus_state_path.apply_prefix("ibc")?;
 
-    let consensus_state_data = ConsensusStateData {
-        path: consensus_state_path.into_bytes(),
-        consensus_state: Some(consensus_state),
-    };
-
-    let consensus_state_data_bytes = proto_encode(&consensus_state_data)?;
+    let consensus_state_bytes = proto_encode(&consensus_state.to_any()?)?;
 
     let sign_bytes = SignBytes {
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::ConsensusState.into(),
-        data: consensus_state_data_bytes,
+        path: consensus_state_path
+            .get_key(1)
+            .ok_or_else(|| anyhow!("invalid path {:?}", consensus_state_path))?
+            .as_bytes()
+            .to_vec(),
+        data: consensus_state_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
@@ -1006,7 +987,7 @@ async fn get_header_proof(
         sequence: chain.sequence.into(),
         timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
         diversifier: chain.config.diversifier.to_owned(),
-        data_type: DataType::Header.into(),
+        path: Vec::from("solomachine:header"),
         data: header_data_bytes,
     };
 
@@ -1064,4 +1045,5 @@ pub struct TokenTransferPacketData {
     pub amount: String,
     pub sender: String,
     pub receiver: String,
+    pub memo: String,
 }

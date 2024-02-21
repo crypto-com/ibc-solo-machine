@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{anyhow, ensure, Context, Result};
-use cosmos_sdk_proto::ibc::core::{
+use ibc_proto::ibc::core::{
     channel::v1::{
         Channel, Counterparty as ChannelCounterparty, Order as ChannelOrder, Packet,
         State as ChannelState,
@@ -16,16 +16,13 @@ use cosmos_sdk_proto::ibc::core::{
 use primitive_types::U256;
 use sqlx::{Executor, Transaction};
 use tendermint::{
-    abci::{
-        tag::{Key, Tag},
-        Event as AbciEvent,
-    },
+    abci::{Event as AbciEvent, EventAttribute},
     trust_threshold::TrustThresholdFraction,
     Hash as TendermintHash,
 };
 use tendermint_light_client::{
-    builder::LightClientBuilder, light_client::Options, store::memory::MemoryStore,
-    store::LightStore, supervisor::Instance,
+    builder::LightClientBuilder, instance::Instance, light_client::Options,
+    store::memory::MemoryStore, store::LightStore,
 };
 use tendermint_rpc::{
     endpoint::broadcast::tx_commit::Response as TxCommitResponse, Client, HttpClient,
@@ -89,7 +86,7 @@ impl IbcService {
             .await
             .context("unable to begin database transaction")?;
 
-        let mut chain = chain::get_chain(&mut transaction, &chain_id)
+        let mut chain = chain::get_chain(&mut *transaction, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
@@ -257,7 +254,7 @@ impl IbcService {
         )?;
 
         let tendermint_connection_id = connection_open_try(
-            &mut *transaction,
+            &mut **transaction,
             tendermint_client_id,
             solo_machine_client_id,
             &solo_machine_connection_id,
@@ -332,7 +329,7 @@ impl IbcService {
         )?;
 
         let tendermint_channel_id = channel_open_try(
-            &mut *transaction,
+            &mut **transaction,
             &chain.config.port_id,
             &solo_machine_channel_id,
             tendermint_connection_id,
@@ -389,7 +386,7 @@ impl IbcService {
             .begin()
             .await
             .context("unable to begin database transaction")?;
-        let chain = chain::get_chain(&mut transaction, chain_id)
+        let chain = chain::get_chain(&mut *transaction, chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
         ensure!(
@@ -491,9 +488,7 @@ impl IbcService {
         )
         .await?;
 
-        let response = rpc_client
-            .broadcast_tx_commit(proto_encode(&msg)?.into())
-            .await?;
+        let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
         let transaction_hash = ensure_response_success(&response)?;
 
@@ -503,7 +498,7 @@ impl IbcService {
             .context("unable to commit transaction for sending tokens over IBC")?;
 
         let success: bool = extract_attribute(
-            &response.deliver_tx.events,
+            &response.tx_result.events,
             "fungible_token_packet",
             "success",
         )?
@@ -538,7 +533,7 @@ impl IbcService {
             Ok(transaction_hash)
         } else {
             let error = extract_attribute(
-                &response.deliver_tx.events,
+                &response.tx_result.events,
                 "write_acknowledgement",
                 "packet_ack",
             )?;
@@ -609,9 +604,7 @@ impl IbcService {
         )
         .await?;
 
-        let response = rpc_client
-            .broadcast_tx_commit(proto_encode(&msg)?.into())
-            .await?;
+        let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
         let transaction_hash = ensure_response_success(&response)?;
 
@@ -679,17 +672,17 @@ impl IbcService {
             .await
             .context("unable to begin database transaction")?;
 
-        let mut chain = chain::get_chain(&mut transaction, &chain_id)
+        let mut chain = chain::get_chain(&mut *transaction, &chain_id)
             .await?
             .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
 
-        chain_keys::add_chain_key(&mut transaction, &chain_id, &new_public_key.encode()).await?;
+        chain_keys::add_chain_key(&mut *transaction, &chain_id, &new_public_key.encode()).await?;
 
         let rpc_client = HttpClient::new(chain.config.rpc_addr.as_str())
             .context("unable to connect to rpc client")?;
 
         let msg = transaction_builder::msg_update_solo_machine_client(
-            &mut transaction,
+            &mut *transaction,
             &signer,
             &mut chain,
             Some(&new_public_key),
@@ -698,9 +691,7 @@ impl IbcService {
         )
         .await?;
 
-        let response = rpc_client
-            .broadcast_tx_commit(proto_encode(&msg)?.into())
-            .await?;
+        let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
         ensure_response_success(&response)?;
 
@@ -793,9 +784,7 @@ impl IbcService {
             )
             .await?;
 
-            let response = rpc_client
-                .broadcast_tx_commit(proto_encode(&msg)?.into())
-                .await?;
+            let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
             transaction
                 .commit()
@@ -822,13 +811,11 @@ where
     let msg = transaction_builder::msg_create_solo_machine_client(signer, chain, memo, request_id)
         .await?;
 
-    let response = rpc_client
-        .broadcast_tx_commit(proto_encode(&msg)?.into())
-        .await?;
+    let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
     ensure_response_success(&response)?;
 
-    extract_attribute(&response.deliver_tx.events, "create_client", "client_id")?.parse()
+    extract_attribute(&response.tx_result.events, "create_client", "client_id")?.parse()
 }
 
 async fn create_tendermint_client<'e>(
@@ -845,9 +832,9 @@ async fn create_tendermint_client<'e>(
         .as_ref()
         .ok_or_else(|| anyhow!("latest height cannot be absent in client state"))?;
 
-    ibc_handler::add_tendermint_client_state(&mut *transaction, &client_id, &client_state).await?;
+    ibc_handler::add_tendermint_client_state(&mut **transaction, &client_id, &client_state).await?;
     ibc_handler::add_tendermint_consensus_state(
-        &mut *transaction,
+        &mut **transaction,
         &client_id,
         latest_height,
         &consensus_state,
@@ -879,14 +866,12 @@ where
     )
     .await?;
 
-    let response = rpc_client
-        .broadcast_tx_commit(proto_encode(&msg)?.into())
-        .await?;
+    let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
     ensure_response_success(&response)?;
 
     extract_attribute(
-        &response.deliver_tx.events,
+        &response.tx_result.events,
         "connection_open_init",
         "connection_id",
     )?
@@ -947,9 +932,7 @@ async fn connection_open_ack(
     )
     .await?;
 
-    let response = rpc_client
-        .broadcast_tx_commit(proto_encode(&msg)?.into())
-        .await?;
+    let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
     ensure_response_success(&response)?;
 
@@ -960,12 +943,12 @@ async fn connection_open_confirm(
     transaction: &mut Transaction<'_, Db>,
     connection_id: &ConnectionId,
 ) -> Result<()> {
-    let mut connection = ibc_handler::get_connection(&mut *transaction, connection_id)
+    let mut connection = ibc_handler::get_connection(&mut **transaction, connection_id)
         .await?
         .ok_or_else(|| anyhow!("connection for connection id ({}) not found", connection_id))?;
     connection.set_state(ConnectionState::Open);
 
-    ibc_handler::update_connection(&mut *transaction, connection_id, &connection).await
+    ibc_handler::update_connection(&mut **transaction, connection_id, &connection).await
 }
 
 async fn channel_open_init<C>(
@@ -988,14 +971,12 @@ where
     )
     .await?;
 
-    let response = rpc_client
-        .broadcast_tx_commit(proto_encode(&msg)?.into())
-        .await?;
+    let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
     ensure_response_success(&response)?;
 
     extract_attribute(
-        &response.deliver_tx.events,
+        &response.tx_result.events,
         "channel_open_init",
         "channel_id",
     )?
@@ -1051,9 +1032,7 @@ where
     )
     .await?;
 
-    let response = rpc_client
-        .broadcast_tx_commit(proto_encode(&msg)?.into())
-        .await?;
+    let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
     ensure_response_success(&response)?;
 
@@ -1065,7 +1044,7 @@ async fn channel_open_confirm(
     port_id: &PortId,
     channel_id: &ChannelId,
 ) -> Result<()> {
-    let mut channel = ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
+    let mut channel = ibc_handler::get_channel(&mut **transaction, port_id, channel_id)
         .await?
         .ok_or_else(|| {
             anyhow!(
@@ -1076,7 +1055,7 @@ async fn channel_open_confirm(
         })?;
     channel.set_state(ChannelState::Open);
 
-    ibc_handler::update_channel(transaction, port_id, channel_id, &channel).await
+    ibc_handler::update_channel(&mut **transaction, port_id, channel_id, &channel).await
 }
 
 /// Close solomachine channel, return the solo-machine channel id
@@ -1091,7 +1070,7 @@ pub async fn channel_close_init<C>(
 where
     C: Client + Send + Sync,
 {
-    let chain = chain::get_chain(transaction, &chain_id)
+    let chain = chain::get_chain(&mut **transaction, &chain_id)
         .await?
         .ok_or_else(|| anyhow!("chain details for {} not found", chain_id))?;
     ensure!(
@@ -1101,14 +1080,12 @@ where
 
     let msg = msg_channel_close_init(signer, &chain, memo, request_id).await?;
 
-    let response = rpc_client
-        .broadcast_tx_commit(proto_encode(&msg)?.into())
-        .await?;
+    let response = rpc_client.broadcast_tx_commit(proto_encode(&msg)?).await?;
 
     ensure_response_success(&response)?;
 
     let channel_id: String = extract_attribute(
-        &response.deliver_tx.events,
+        &response.tx_result.events,
         "channel_close_init",
         "channel_id",
     )?
@@ -1124,7 +1101,7 @@ async fn close_channel_confirm(
     new_connection_details: &ConnectionDetails,
 ) -> Result<()> {
     // set the channel status to close
-    let mut channel = ibc_handler::get_channel(&mut *transaction, port_id, channel_id)
+    let mut channel = ibc_handler::get_channel(&mut **transaction, port_id, channel_id)
         .await?
         .ok_or_else(|| {
             anyhow!(
@@ -1134,9 +1111,9 @@ async fn close_channel_confirm(
             )
         })?;
     channel.set_state(ChannelState::Closed);
-    ibc_handler::update_channel(&mut *transaction, port_id, channel_id, &channel).await?;
+    ibc_handler::update_channel(&mut **transaction, port_id, channel_id, &channel).await?;
 
-    chain::add_connection_details(&mut *transaction, chain_id, new_connection_details).await?;
+    chain::add_connection_details(&mut **transaction, chain_id, new_connection_details).await?;
     Ok(())
 }
 
@@ -1172,8 +1149,8 @@ fn prepare_light_client(
 fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
     let mut packets = vec![];
 
-    for event in response.deliver_tx.events.iter() {
-        if event.type_str == "send_packet" {
+    for event in response.tx_result.events.iter() {
+        if event.kind == "send_packet" {
             let mut attributes = HashMap::new();
 
             for tag in event.attributes.iter() {
@@ -1232,9 +1209,9 @@ fn ensure_response_success(response: &TxCommitResponse) -> Result<String> {
     );
 
     ensure!(
-        response.deliver_tx.code.is_ok(),
+        response.tx_result.code.is_ok(),
         "deliver_tx response contains error code: {}",
-        response.deliver_tx.log
+        response.tx_result.log
     );
 
     Ok(response.hash.to_string())
@@ -1244,7 +1221,7 @@ fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Resul
     let mut attribute = None;
 
     for event in events {
-        if event.type_str == event_type {
+        if event.kind == event_type {
             attribute = Some(get_attribute(&event.attributes, key)?);
         }
     }
@@ -1259,11 +1236,7 @@ fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Resul
     })
 }
 
-fn get_attribute(tags: &[Tag], key: &str) -> Result<String> {
-    let key: Key = key
-        .parse()
-        .map_err(|e| anyhow!("unable to parse attribute key `{}`: {}", key, e))?;
-
+fn get_attribute(tags: &[EventAttribute], key: &str) -> Result<String> {
     for tag in tags {
         if tag.key == key {
             return Ok(tag.value.to_string());

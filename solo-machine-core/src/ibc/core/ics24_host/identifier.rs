@@ -2,7 +2,7 @@ use core::fmt;
 use std::{convert::TryFrom, ops::Deref, str::FromStr};
 
 use anyhow::{ensure, Error};
-use cosmos_sdk_proto::ibc::core::commitment::v1::MerklePrefix;
+use ibc_proto::ibc::core::commitment::v1::MerklePrefix;
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
 use serde::{Deserialize, Serialize};

@@ -15,7 +15,7 @@ use std::{env, str::FromStr, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use bip32::{DerivationPath, ExtendedPrivateKey, Language, Mnemonic};
-use k256::ecdsa::{Signature, SigningKey};
+use k256::ecdsa::SigningKey;
 use solo_machine_core::{
     cosmos::crypto::PublicKey,
     signer::{AddressAlgo, Message, SignerRegistrar},
@@ -84,9 +84,9 @@ impl ToPublicKey for MnemonicSigner {
         let verifying_key = signing_key.verifying_key();
 
         match self.algo {
-            AddressAlgo::Secp256k1 => Ok(PublicKey::Secp256k1(verifying_key)),
+            AddressAlgo::Secp256k1 => Ok(PublicKey::Secp256k1(*verifying_key)),
             #[cfg(feature = "ethermint")]
-            AddressAlgo::EthSecp256k1 => Ok(PublicKey::EthSecp256k1(verifying_key)),
+            AddressAlgo::EthSecp256k1 => Ok(PublicKey::EthSecp256k1(*verifying_key)),
         }
     }
 
@@ -105,18 +105,23 @@ impl Signer for MnemonicSigner {
     async fn sign(&self, _request_id: Option<&str>, message: Message<'_>) -> Result<Vec<u8>> {
         let signing_key = self.get_signing_key()?;
 
-        let signature: Signature = match self.algo {
-            AddressAlgo::Secp256k1 => <SigningKey as k256::ecdsa::signature::Signer<
+        match self.algo {
+            AddressAlgo::Secp256k1 => Ok(<SigningKey as k256::ecdsa::signature::Signer<
                 k256::ecdsa::Signature,
-            >>::sign(&signing_key, message.as_ref()),
-            #[cfg(feature = "ethermint")]
-            AddressAlgo::EthSecp256k1 => <SigningKey as k256::ecdsa::signature::Signer<
-                k256::ecdsa::recoverable::Signature,
             >>::sign(&signing_key, message.as_ref())
-            .into(),
-        };
+            .to_bytes()
+            .to_vec()),
+            #[cfg(feature = "ethermint")]
+            AddressAlgo::EthSecp256k1 => {
+                let (signature, recovery_id) = signing_key.sign_recoverable(message.as_ref())?;
 
-        Ok(signature.as_ref().to_vec())
+                let mut buf = Vec::with_capacity(signature.encoded_len() + 1);
+                buf.extend(signature.to_bytes());
+                buf.push(recovery_id.to_byte());
+
+                Ok(buf)
+            }
+        }
     }
 }
 

@@ -6,9 +6,8 @@ pub mod base_account;
 pub mod eth_account;
 
 use anyhow::{anyhow, Result};
-use cosmos_sdk_proto::cosmos::auth::v1beta1::BaseAccount;
+use ibc_proto::{cosmos::auth::v1beta1::BaseAccount, google::protobuf::Any};
 use prost::Message;
-use prost_types::Any;
 
 #[cfg(feature = "ethermint")]
 use crate::proto::ethermint::types::v1::EthAccount;
