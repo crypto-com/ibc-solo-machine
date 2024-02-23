@@ -1,4 +1,4 @@
-use cosmos_sdk_proto::ibc::applications::transfer::v1::MsgTransfer;
+use ibc_proto::ibc::applications::transfer::v1::MsgTransfer;
 
 const TYPE_URL: &str = "/ibc.applications.transfer.v1.MsgTransfer";
 

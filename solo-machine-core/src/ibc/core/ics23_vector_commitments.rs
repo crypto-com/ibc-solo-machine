@@ -1,4 +1,4 @@
-use cosmos_sdk_proto::ics23::{HashOp, InnerSpec, LeafOp, LengthOp, ProofSpec};
+use ibc_proto::ics23::{HashOp, InnerSpec, LeafOp, LengthOp, ProofSpec};
 
 fn tendermint_spec() -> ProofSpec {
     ProofSpec {
@@ -19,6 +19,7 @@ fn tendermint_spec() -> ProofSpec {
         }),
         max_depth: 0,
         min_depth: 0,
+        prehash_key_before_comparison: false,
     }
 }
 
@@ -41,6 +42,7 @@ fn iavl_spec() -> ProofSpec {
         }),
         max_depth: 0,
         min_depth: 0,
+        prehash_key_before_comparison: false,
     }
 }
 

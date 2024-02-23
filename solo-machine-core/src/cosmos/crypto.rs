@@ -15,25 +15,27 @@ use std::{
 
 use anyhow::{anyhow, ensure, Error, Result};
 use bech32::{ToBase32, Variant};
-use cosmos_sdk_proto::cosmos::tx::signing::v1beta1::signature_descriptor::data::Sum as SignatureData;
+use ibc_proto::{
+    cosmos::{
+        crypto::{
+            ed25519::PubKey as Ed25519PubKey, multisig::LegacyAminoPubKey,
+            secp256k1::PubKey as Secp256k1PubKey,
+        },
+        tx::signing::v1beta1::signature_descriptor::data::Sum as SignatureData,
+    },
+    google::protobuf::Any,
+};
 use k256::ecdsa::VerifyingKey;
 use prost::Message;
-use prost_types::Any;
-use ripemd160::{Digest, Ripemd160};
+use ripemd::Ripemd160;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 #[cfg(feature = "ethermint")]
 use sha3::Keccak256;
 
 #[cfg(feature = "ethermint")]
 use crate::proto::ethermint::crypto::v1::ethsecp256k1::PubKey as EthSecp256k1PubKey;
-use crate::proto::{
-    cosmos::crypto::{
-        ed25519::PubKey as Ed25519PubKey, multisig::LegacyAminoPubKey,
-        secp256k1::PubKey as Secp256k1PubKey,
-    },
-    proto_encode, AnyConvert,
-};
+use crate::proto::{proto_encode, AnyConvert};
 
 #[cfg(feature = "ethermint")]
 use self::eth_secp256k1::ETH_SECP256K1_PUB_KEY_TYPE_URL;
@@ -83,7 +85,7 @@ pub enum PublicKey {
         )]
         k256::ecdsa::VerifyingKey,
     ),
-    Ed25519(ed25519_dalek::PublicKey),
+    Ed25519(ed25519_dalek::VerifyingKey),
     Multisig(MultisigPublicKey),
 }
 
@@ -91,15 +93,15 @@ impl PublicKey {
     pub fn encode(&self) -> String {
         match self {
             #[cfg(feature = "ethermint")]
-            Self::EthSecp256k1(key) => hex::encode_upper(key.to_bytes()),
-            Self::Secp256k1(key) => hex::encode_upper(key.to_bytes()),
+            Self::EthSecp256k1(key) => hex::encode_upper(key.to_sec1_bytes()),
+            Self::Secp256k1(key) => hex::encode_upper(key.to_sec1_bytes()),
             Self::Ed25519(key) => hex::encode_upper(key.as_bytes()),
             Self::Multisig(_) => "unsupported key type".to_string(),
         }
     }
 
     pub fn address(&self) -> Result<String> {
-        Ok(hex::encode(&self.address_bytes()?))
+        Ok(hex::encode(self.address_bytes()?))
     }
 
     pub fn account_address(&self, prefix: &str) -> Result<String> {
@@ -151,19 +153,18 @@ impl PublicKey {
             Self::EthSecp256k1(ref key) => {
                 use k256::EncodedPoint;
 
-                let encoded_point: EncodedPoint = key.into();
-                let hash =
-                    Keccak256::digest(&encoded_point.to_untagged_bytes().unwrap())[12..].to_vec();
+                let encoded_point: EncodedPoint = key.to_encoded_point(false);
+                let hash = Keccak256::digest(&encoded_point.as_bytes()[1..])[12..].to_vec();
 
                 Ok(hash)
             }
             Self::Secp256k1(ref key) => {
-                Ok(Ripemd160::digest(&Sha256::digest(&key.to_bytes())).to_vec())
+                Ok(Ripemd160::digest(Sha256::digest(&key.to_sec1_bytes())).to_vec())
             }
             Self::Ed25519(ref key) => Ok(Sha256::digest(key.as_bytes()).to_vec()),
             Self::Multisig(ref key) => {
                 let multisig_key: LegacyAminoPubKey = key.try_into()?;
-                let bytes = Sha256::digest(&proto_encode(&multisig_key)?);
+                let bytes = Sha256::digest(proto_encode(&multisig_key)?);
                 Ok(bytes[..20].to_vec())
             }
         }
@@ -187,11 +188,13 @@ impl AnyConvert for PublicKey {
             }
             SECP256K1_PUB_KEY_TYPE_URL => {
                 let public_key: Secp256k1PubKey = Secp256k1PubKey::decode(value.value.as_slice())?;
-                Ok(Self::Secp256k1(TryFrom::try_from(&public_key)?))
+                Ok(Self::Secp256k1(self::secp256k1::try_from_pub_key(
+                    &public_key,
+                )?))
             }
             ED25519_PUB_KEY_TYPE_URL => {
                 let public_key: Ed25519PubKey = Ed25519PubKey::decode(value.value.as_slice())?;
-                Ok(Self::Ed25519(TryFrom::try_from(&public_key)?))
+                Ok(Self::Ed25519(self::ed25519::try_from_pub_key(&public_key)?))
             }
             MULTISIG_PUB_KEY_TYPE_URL => {
                 let multisig_key: LegacyAminoPubKey =
@@ -210,11 +213,11 @@ impl AnyConvert for PublicKey {
                 public_key.to_any()
             }
             Self::Secp256k1(ref key) => {
-                let public_key: Secp256k1PubKey = key.into();
+                let public_key: Secp256k1PubKey = self::secp256k1::from_verifying_key(key);
                 public_key.to_any()
             }
             Self::Ed25519(ref key) => {
-                let public_key: Ed25519PubKey = key.into();
+                let public_key: Ed25519PubKey = self::ed25519::from_verifying_key(key);
                 public_key.to_any()
             }
             Self::Multisig(ref key) => {
@@ -229,7 +232,7 @@ fn serialize_verifying_key<S>(key: &VerifyingKey, serializer: S) -> Result<S::Ok
 where
     S: Serializer,
 {
-    hex::serialize_upper(key.to_bytes(), serializer)
+    hex::serialize_upper(key.to_sec1_bytes(), serializer)
 }
 
 fn deserialize_verifying_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>

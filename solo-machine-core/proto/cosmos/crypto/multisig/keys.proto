@@ -1,5 +1,5 @@
 // Copyright (c) 2016-2020 All in Bits, Inc (licensed under the Apache License, Version 2.0)
-// Modifications Copyright (c) 2021, Foris Limited ("Crypto.com") (licensed under the Apache License, Version 2.0)
+// Modifications Copyright (c) 2021-present Crypto.com (licensed under the Apache License, Version 2.0)
 syntax = "proto3";
 package cosmos.crypto.multisig;
 

@@ -5,6 +5,7 @@ members = [
     "event-hooks/stdout-logger",
     "signers/mnemonic-signer",
 ]
+resolver = "2"
 
 [profile.release]
 lto = true

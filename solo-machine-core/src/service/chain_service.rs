@@ -52,8 +52,8 @@ impl ChainService {
             .await
             .context("unable to begin database transaction")?;
 
-        chain::add_chain(&mut transaction, &chain_id, &node_id, config).await?;
-        chain_keys::add_chain_key(&mut transaction, &chain_id, public_key).await?;
+        chain::add_chain(&mut *transaction, &chain_id, &node_id, config).await?;
+        chain_keys::add_chain_key(&mut *transaction, &chain_id, public_key).await?;
 
         transaction
             .commit()

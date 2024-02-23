@@ -1,5 +1,5 @@
 use anyhow::{ensure, Context, Result};
-use cosmos_sdk_proto::ibc::{
+use ibc_proto::ibc::{
     core::{channel::v1::Channel, client::v1::Height, connection::v1::ConnectionEnd},
     lightclients::tendermint::v1::{
         ClientState as TendermintClientState, ConsensusState as TendermintConsensusState,
@@ -19,6 +19,7 @@ use crate::{
 
 #[derive(Debug, FromRow)]
 struct IbcData {
+    #[allow(dead_code)]
     path: String,
     data: Vec<u8>,
 }
@@ -29,10 +30,10 @@ pub async fn add_tendermint_client_state<'e>(
     client_id: &ClientId,
     client_state: &TendermintClientState,
 ) -> Result<()> {
-    let path: String = ClientStatePath::new(client_id).into();
+    let path = ClientStatePath::new(client_id);
     let data = proto_encode(client_state)?;
 
-    add(executor, &path, &data).await
+    add(executor, path.get_key(0).unwrap(), &data).await
 }
 
 /// Fetches tendermint client state from database
@@ -40,8 +41,8 @@ pub async fn get_tendermint_client_state<'e>(
     executor: impl Executor<'e, Database = Db>,
     client_id: &ClientId,
 ) -> Result<Option<TendermintClientState>> {
-    let path: String = ClientStatePath::new(client_id).into();
-    get(executor, &path).await
+    let path = ClientStatePath::new(client_id);
+    get(executor, path.get_key(0).unwrap()).await
 }
 
 /// Adds tendermint consensus state to database
@@ -51,10 +52,10 @@ pub async fn add_tendermint_consensus_state<'e>(
     height: &Height,
     consensus_state: &TendermintConsensusState,
 ) -> Result<()> {
-    let path: String = ConsensusStatePath::new(client_id, height).into();
+    let path = ConsensusStatePath::new(client_id, height);
     let data = proto_encode(consensus_state)?;
 
-    add(executor, &path, &data).await
+    add(executor, path.get_key(0).unwrap(), &data).await
 }
 
 /// Fetches tendermint consensus state from database
@@ -63,8 +64,8 @@ pub async fn get_tendermint_consensus_state<'e>(
     client_id: &ClientId,
     height: &Height,
 ) -> Result<Option<TendermintConsensusState>> {
-    let path: String = ConsensusStatePath::new(client_id, height).into();
-    get(executor, &path).await
+    let path = ConsensusStatePath::new(client_id, height);
+    get(executor, path.get_key(0).unwrap()).await
 }
 
 /// Adds connection to database
@@ -73,10 +74,10 @@ pub async fn add_connection<'e>(
     connection_id: &ConnectionId,
     connection: &ConnectionEnd,
 ) -> Result<()> {
-    let path: String = ConnectionPath::new(connection_id).into();
+    let path = ConnectionPath::new(connection_id);
     let data = proto_encode(connection)?;
 
-    add(executor, &path, &data).await
+    add(executor, path.get_key(0).unwrap(), &data).await
 }
 
 /// Fetches connection from database
@@ -84,8 +85,8 @@ pub async fn get_connection<'e>(
     executor: impl Executor<'e, Database = Db>,
     connection_id: &ConnectionId,
 ) -> Result<Option<ConnectionEnd>> {
-    let path: String = ConnectionPath::new(connection_id).into();
-    get(executor, &path).await
+    let path = ConnectionPath::new(connection_id);
+    get(executor, path.get_key(0).unwrap()).await
 }
 
 /// Updates connection in database
@@ -94,10 +95,10 @@ pub async fn update_connection<'e>(
     connection_id: &ConnectionId,
     connection: &ConnectionEnd,
 ) -> Result<()> {
-    let path: String = ConnectionPath::new(connection_id).into();
+    let path = ConnectionPath::new(connection_id);
     let data = proto_encode(connection)?;
 
-    update(executor, &path, &data).await
+    update(executor, path.get_key(0).unwrap(), &data).await
 }
 
 /// Adds channel to database
@@ -107,10 +108,10 @@ pub async fn add_channel<'e>(
     channel_id: &ChannelId,
     channel: &Channel,
 ) -> Result<()> {
-    let path: String = ChannelPath::new(port_id, channel_id).into();
+    let path = ChannelPath::new(port_id, channel_id);
     let data = proto_encode(channel)?;
 
-    add(executor, &path, &data).await
+    add(executor, path.get_key(0).unwrap(), &data).await
 }
 
 /// Fetches channel from database
@@ -119,8 +120,8 @@ pub async fn get_channel<'e>(
     port_id: &PortId,
     channel_id: &ChannelId,
 ) -> Result<Option<Channel>> {
-    let path: String = ChannelPath::new(port_id, channel_id).into();
-    get(executor, &path).await
+    let path = ChannelPath::new(port_id, channel_id);
+    get(executor, path.get_key(0).unwrap()).await
 }
 
 /// Updates channel in database
@@ -130,10 +131,10 @@ pub async fn update_channel<'e>(
     channel_id: &ChannelId,
     channel: &Channel,
 ) -> Result<()> {
-    let path: String = ChannelPath::new(port_id, channel_id).into();
+    let path = ChannelPath::new(port_id, channel_id);
     let data = proto_encode(channel)?;
 
-    update(executor, &path, &data).await
+    update(executor, path.get_key(0).unwrap(), &data).await
 }
 
 async fn add<'e>(

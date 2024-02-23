@@ -222,13 +222,13 @@ impl ChainCommand {
                             let mut table = Vec::new();
 
                             add_row(&mut table, "ID", &chain.id);
-                            add_row(&mut table, "Node ID", &chain.node_id);
+                            add_row(&mut table, "Node ID", chain.node_id);
                             add_row(&mut table, "gRPC address", &chain.config.grpc_addr);
                             add_row(&mut table, "RPC address", &chain.config.rpc_addr);
-                            add_row(&mut table, "Fee amount", &chain.config.fee.amount);
+                            add_row(&mut table, "Fee amount", chain.config.fee.amount);
                             add_row(&mut table, "Fee denom", &chain.config.fee.denom);
-                            add_row(&mut table, "Gas limit", &chain.config.fee.gas_limit);
-                            add_row(&mut table, "Trust level", &chain.config.trust_level);
+                            add_row(&mut table, "Gas limit", chain.config.fee.gas_limit);
+                            add_row(&mut table, "Trust level", chain.config.trust_level);
                             add_row(
                                 &mut table,
                                 "Trusting period",
@@ -246,19 +246,15 @@ impl ChainCommand {
                             );
                             add_row(&mut table, "Diversifier", &chain.config.diversifier);
                             add_row(&mut table, "Port ID", &chain.config.port_id);
-                            add_row(&mut table, "Trusted height", &chain.config.trusted_height);
+                            add_row(&mut table, "Trusted height", chain.config.trusted_height);
                             add_row(
                                 &mut table,
                                 "Trusted hash",
-                                hex::encode_upper(&chain.config.trusted_hash),
+                                hex::encode_upper(chain.config.trusted_hash),
                             );
-                            add_row(
-                                &mut table,
-                                "Consensus timestamp",
-                                &chain.consensus_timestamp,
-                            );
-                            add_row(&mut table, "Sequence", &chain.sequence);
-                            add_row(&mut table, "Packet sequence", &chain.packet_sequence);
+                            add_row(&mut table, "Consensus timestamp", chain.consensus_timestamp);
+                            add_row(&mut table, "Sequence", chain.sequence);
+                            add_row(&mut table, "Packet sequence", chain.packet_sequence);
 
                             match chain.connection_details {
                                 None => table.push(
@@ -280,10 +276,7 @@ impl ChainCommand {
                                     add_row(
                                         &mut table,
                                         "Solo machine client ID",
-                                        connection_details
-                                            .solo_machine_channel_id
-                                            .as_ref()
-                                            .unwrap(),
+                                        &connection_details.solo_machine_client_id,
                                     );
                                     add_row(
                                         &mut table,
@@ -316,8 +309,8 @@ impl ChainCommand {
                                 }
                             }
 
-                            add_row(&mut table, "Created at", &chain.created_at);
-                            add_row(&mut table, "Updated at", &chain.updated_at);
+                            add_row(&mut table, "Created at", chain.created_at);
+                            add_row(&mut table, "Updated at", chain.updated_at);
 
                             print_stdout(table.table().color_choice(color_choice))
                                 .context("unable to print table to stdout")
