@@ -58,16 +58,6 @@ pub async fn add_tendermint_consensus_state<'e>(
     add(executor, path.get_key(0).unwrap(), &data).await
 }
 
-/// Fetches tendermint consensus state from database
-pub async fn get_tendermint_consensus_state<'e>(
-    executor: impl Executor<'e, Database = Db>,
-    client_id: &ClientId,
-    height: &Height,
-) -> Result<Option<TendermintConsensusState>> {
-    let path = ConsensusStatePath::new(client_id, height);
-    get(executor, path.get_key(0).unwrap()).await
-}
-
 /// Adds connection to database
 pub async fn add_connection<'e>(
     executor: impl Executor<'e, Database = Db>,
