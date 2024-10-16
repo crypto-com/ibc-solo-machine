@@ -69,8 +69,7 @@ use crate::{
             ics24_host::{
                 identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
                 path::{
-                    ChannelPath, ClientStatePath, ConnectionPath, ConsensusStatePath,
-                    PacketAcknowledgementPath, PacketCommitmentPath,
+                    ChannelPath, ConnectionPath, PacketAcknowledgementPath, PacketCommitmentPath,
                 },
             },
         },
@@ -262,25 +261,8 @@ pub async fn msg_connection_open_ack(
     .await?;
     *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
 
-    let proof_client = get_client_proof(
-        &mut **transaction,
-        &signer,
-        chain,
-        tendermint_client_id,
-        request_id,
-    )
-    .await?;
-    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
-
-    let proof_consensus = get_consensus_proof(
-        &mut *transaction,
-        &signer,
-        chain,
-        tendermint_client_id,
-        request_id,
-    )
-    .await?;
-    *chain = chain::increment_sequence(&mut **transaction, &chain.id).await?;
+    let proof_client: Vec<u8> = Vec::new();
+    let proof_consensus: Vec<u8> = Vec::new();
 
     let message = MsgConnectionOpenAck {
         connection_id: solo_machine_connection_id.to_string(),
@@ -887,83 +869,6 @@ async fn get_connection_proof<'e>(
             .as_bytes()
             .to_vec(),
         data: connection_bytes,
-    };
-
-    timestamped_sign(signer, chain, sign_bytes, request_id).await
-}
-
-async fn get_client_proof<'e>(
-    executor: impl Executor<'e, Database = Db>,
-    signer: impl Signer,
-    chain: &Chain,
-    client_id: &ClientId,
-    request_id: Option<&str>,
-) -> Result<Vec<u8>> {
-    let client_state = ibc_handler::get_tendermint_client_state(executor, client_id)
-        .await?
-        .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
-
-    let mut client_state_path = ClientStatePath::new(client_id);
-    client_state_path.apply_prefix("ibc")?;
-
-    let client_state_bytes = proto_encode(&client_state.to_any()?)?;
-
-    let sign_bytes = SignBytes {
-        sequence: chain.sequence.into(),
-        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
-        diversifier: chain.config.diversifier.to_owned(),
-        path: client_state_path
-            .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {:?}", client_state_path))?
-            .as_bytes()
-            .to_vec(),
-        data: client_state_bytes,
-    };
-
-    timestamped_sign(signer, chain, sign_bytes, request_id).await
-}
-
-async fn get_consensus_proof(
-    transaction: &mut Transaction<'_, Db>,
-    signer: impl Signer,
-    chain: &Chain,
-    client_id: &ClientId,
-    request_id: Option<&str>,
-) -> Result<Vec<u8>> {
-    let client_state = ibc_handler::get_tendermint_client_state(&mut **transaction, client_id)
-        .await?
-        .ok_or_else(|| anyhow!("client with id {} not found", client_id))?;
-
-    let height = client_state
-        .latest_height
-        .ok_or_else(|| anyhow!("client state does not contain latest height"))?;
-
-    let consensus_state =
-        ibc_handler::get_tendermint_consensus_state(&mut **transaction, client_id, &height)
-            .await?
-            .ok_or_else(|| {
-                anyhow!(
-                    "consensus state with id {} and height {} not found",
-                    client_id,
-                    height.to_string(),
-                )
-            })?;
-
-    let mut consensus_state_path = ConsensusStatePath::new(client_id, &height);
-    consensus_state_path.apply_prefix("ibc")?;
-
-    let consensus_state_bytes = proto_encode(&consensus_state.to_any()?)?;
-
-    let sign_bytes = SignBytes {
-        sequence: chain.sequence.into(),
-        timestamp: to_u64_timestamp(chain.consensus_timestamp)?,
-        diversifier: chain.config.diversifier.to_owned(),
-        path: consensus_state_path
-            .get_key(1)
-            .ok_or_else(|| anyhow!("invalid path {:?}", consensus_state_path))?
-            .as_bytes()
-            .to_vec(),
-        data: consensus_state_bytes,
     };
 
     timestamped_sign(signer, chain, sign_bytes, request_id).await
