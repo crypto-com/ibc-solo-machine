@@ -69,8 +69,7 @@ use crate::{
             ics24_host::{
                 identifier::{ChainId, ChannelId, ClientId, ConnectionId, Identifier},
                 path::{
-                    ChannelPath, ConnectionPath,
-                    PacketAcknowledgementPath, PacketCommitmentPath,
+                    ChannelPath, ConnectionPath, PacketAcknowledgementPath, PacketCommitmentPath,
                 },
             },
         },
