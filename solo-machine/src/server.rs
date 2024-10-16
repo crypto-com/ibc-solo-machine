@@ -16,7 +16,7 @@ use self::{
 /// Starts gRPC server
 pub async fn start_grpc(
     db_pool: DbPool,
-    signer: impl Signer + Clone + Send + Sync + 'static,
+    signer: impl Signer + Clone + 'static,
     sender: UnboundedSender<Event>,
     addr: SocketAddr,
 ) -> Result<()> {
