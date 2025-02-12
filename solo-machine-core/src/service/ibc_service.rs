@@ -535,7 +535,7 @@ impl IbcService {
             let error = extract_attribute(
                 &response.tx_result.events,
                 "write_acknowledgement",
-                "packet_ack",
+                "packet_ack_hex",
             )?;
 
             Err(anyhow!(
@@ -1176,8 +1176,8 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
                     .remove("packet_dst_channel")
                     .ok_or_else(|| anyhow!("`packet_dst_channel` is missing from packet data"))?,
                 data: attributes
-                    .remove("packet_data")
-                    .ok_or_else(|| anyhow!("`packet_data` is missing from packet data"))?
+                    .remove("packet_data_hex")
+                    .ok_or_else(|| anyhow!("`packet_data_hex` is missing from packet data"))?
                     .into_bytes(),
                 timeout_height: Some(
                     Height::from_str(&attributes.remove("packet_timeout_height").ok_or_else(
