@@ -1175,10 +1175,12 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
                 destination_channel: attributes
                     .remove("packet_dst_channel")
                     .ok_or_else(|| anyhow!("`packet_dst_channel` is missing from packet data"))?,
-                data: hex::decode(attributes
-                    .remove("packet_data_hex")
-                    .ok_or_else(|| anyhow!("`packet_data_hex` is missing from packet data"))?)
-                    .unwrap(),
+                data: hex::decode(
+                    attributes
+                        .remove("packet_data_hex")
+                        .ok_or_else(|| anyhow!("`packet_data_hex` is missing from packet data"))?,
+                )
+                .unwrap(),
                 timeout_height: Some(
                     Height::from_str(&attributes.remove("packet_timeout_height").ok_or_else(
                         || anyhow!("`packet_timeout_height` is missing from packet data"),
