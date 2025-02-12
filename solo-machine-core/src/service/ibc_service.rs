@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str;
 
 use anyhow::{anyhow, ensure, Context, Result};
 use ibc_proto::ibc::core::{
@@ -532,11 +533,13 @@ impl IbcService {
 
             Ok(transaction_hash)
         } else {
-            let error = extract_attribute(
+            let hex_error = extract_attribute(
                 &response.tx_result.events,
                 "write_acknowledgement",
-                "packet_ack",
+                "packet_ack_hex",
             )?;
+            let bz = hex::decode(&hex_error)?;
+            let error = str::from_utf8(&bz)?;
 
             Err(anyhow!(
                 "Failed to mint tokens on IBC enabled chain: {}",
@@ -1175,10 +1178,12 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
                 destination_channel: attributes
                     .remove("packet_dst_channel")
                     .ok_or_else(|| anyhow!("`packet_dst_channel` is missing from packet data"))?,
-                data: attributes
-                    .remove("packet_data")
-                    .ok_or_else(|| anyhow!("`packet_data` is missing from packet data"))?
-                    .into_bytes(),
+                data: hex::decode(
+                    attributes
+                        .remove("packet_data_hex")
+                        .ok_or_else(|| anyhow!("`packet_data_hex` is missing from packet data"))?
+                        .into_bytes(),
+                )?,
                 timeout_height: Some(
                     Height::from_str(&attributes.remove("packet_timeout_height").ok_or_else(
                         || anyhow!("`packet_timeout_height` is missing from packet data"),
