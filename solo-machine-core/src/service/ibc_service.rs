@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, ensure, Context, Ok, Result};
 use ibc_proto::ibc::core::{
     channel::v1::{
         Channel, Counterparty as ChannelCounterparty, Order as ChannelOrder, Packet,
@@ -532,10 +532,11 @@ impl IbcService {
 
             Ok(transaction_hash)
         } else {
-            let error = extract_attribute(
+            let error = extract_attribute_with_hex(
                 &response.tx_result.events,
                 "write_acknowledgement",
                 "packet_ack_hex",
+                true,
             )?;
 
             Err(anyhow!(
@@ -1220,6 +1221,15 @@ fn ensure_response_success(response: &TxCommitResponse) -> Result<String> {
 }
 
 fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Result<String> {
+    extract_attribute_with_hex(events, event_type, key, false)
+}
+
+fn extract_attribute_with_hex(
+    events: &[AbciEvent],
+    event_type: &str,
+    key: &str,
+    with_hex: bool,
+) -> Result<String> {
     let mut attribute = None;
 
     for event in events {
@@ -1228,14 +1238,20 @@ fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Resul
         }
     }
 
-    attribute.ok_or_else(|| {
-        anyhow!(
+    if attribute.is_some() {
+        if !with_hex {
+            Ok(attribute.unwrap())
+        } else {
+            Ok(String::from_utf8(hex::decode(attribute.unwrap()).unwrap()).unwrap())
+        }
+    } else {
+        Err(anyhow!(
             "{}:{} not found in tendermint response events: {:?}",
             event_type,
             key,
             events
-        )
-    })
+        ))
+    }
 }
 
 fn get_attribute(tags: &[EventAttribute], key: &str) -> Result<String> {
