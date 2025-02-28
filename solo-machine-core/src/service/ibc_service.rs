@@ -1154,7 +1154,7 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
             let mut attributes = HashMap::new();
 
             for tag in event.attributes.iter() {
-                attributes.insert(tag.key.to_string(), tag.value.to_string());
+                attributes.insert(tag.key_str()?.to_string(), tag.value_str()?.to_string());
             }
 
             let packet = Packet {
@@ -1238,8 +1238,8 @@ fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Resul
 
 fn get_attribute(tags: &[EventAttribute], key: &str) -> Result<String> {
     for tag in tags {
-        if tag.key == key {
-            return Ok(tag.value.to_string());
+        if tag.key_str()? == key {
+            return Ok(tag.value_str()?.to_string());
         }
     }
 

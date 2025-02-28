@@ -54,7 +54,7 @@ use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{Executor, Transaction};
-use tendermint::block::Header;
+use tendermint::block::header::Header;
 use tendermint_light_client::instance::Instance;
 use tendermint_rpc::Client;
 
