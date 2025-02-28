@@ -503,7 +503,7 @@ pub async fn msg_token_receive_ack<'e>(
     request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let proof_height = Height::new(0, chain.sequence.into());
-    // base64 of '\x01'
+    // base64 of '\x01', compatible with golang encoding.
     let acknowledgement = serde_json::to_vec(&json!({ "result": "AQ==" }))?;
 
     let proof_acked = get_packet_acknowledgement_proof(
