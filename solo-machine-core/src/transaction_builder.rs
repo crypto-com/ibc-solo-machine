@@ -54,7 +54,7 @@ use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{Executor, Transaction};
-use tendermint::block::Header;
+use tendermint::block::header::Header;
 use tendermint_light_client::instance::Instance;
 use tendermint_rpc::Client;
 
@@ -503,7 +503,8 @@ pub async fn msg_token_receive_ack<'e>(
     request_id: Option<&str>,
 ) -> Result<TxRaw> {
     let proof_height = Height::new(0, chain.sequence.into());
-    let acknowledgement = serde_json::to_vec(&json!({ "result": [1] }))?;
+    // base64 of '\x01', compatible with golang encoding.
+    let acknowledgement = serde_json::to_vec(&json!({ "result": "AQ==" }))?;
 
     let proof_acked = get_packet_acknowledgement_proof(
         &signer,

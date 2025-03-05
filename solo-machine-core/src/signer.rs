@@ -48,7 +48,7 @@ pub enum Message<'a> {
     SignDoc(&'a [u8]),
 }
 
-impl<'a> Message<'a> {
+impl Message<'_> {
     /// Returns the message type of current message
     pub fn message_type(&self) -> &'static str {
         match self {

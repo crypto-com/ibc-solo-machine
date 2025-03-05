@@ -34,9 +34,9 @@ sqlx = { version = "0.7.3", features = [
     "sqlite",
     "chrono",
 ] }
-tendermint = "0.34.0"
-tendermint-light-client = { version = "0.34.0", features = ["rust-crypto"] }
-tendermint-rpc = { version = "0.34.0", features = ["http-client"] }
+tendermint = "0.40.0"
+tendermint-light-client = { version = "0.40.0", features = ["rust-crypto"] }
+tendermint-rpc = { version = "0.40.0", features = ["http-client"] }
 time = "0.3.34"
 tokio = { version = "1.35.1", features = ["sync"] }
 tonic = { version = "0.10.2", features = ["tls", "tls-roots"] }

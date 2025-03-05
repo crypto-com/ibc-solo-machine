@@ -189,7 +189,7 @@ impl IbcService {
             .context("unable to commit transaction for creating ibc connection")
     }
 
-    async fn create_new_client<'e>(
+    async fn create_new_client(
         &self,
         signer: impl Signer,
         memo: String,
@@ -224,7 +224,7 @@ impl IbcService {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn create_connection<'e>(
+    async fn create_connection(
         &self,
         chain: &mut Chain,
         signer: impl Signer,
@@ -300,7 +300,7 @@ impl IbcService {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn open_channel<'e>(
+    async fn open_channel(
         &self,
         signer: &impl Signer,
         memo: String,
@@ -818,7 +818,7 @@ where
     extract_attribute(&response.tx_result.events, "create_client", "client_id")?.parse()
 }
 
-async fn create_tendermint_client<'e>(
+async fn create_tendermint_client(
     transaction: &mut Transaction<'_, Db>,
     instance: &mut Instance,
     chain: &Chain,
@@ -1154,7 +1154,7 @@ fn extract_packets(response: &TxCommitResponse) -> Result<Vec<Packet>> {
             let mut attributes = HashMap::new();
 
             for tag in event.attributes.iter() {
-                attributes.insert(tag.key.to_string(), tag.value.to_string());
+                attributes.insert(tag.key_str()?.to_string(), tag.value_str()?.to_string());
             }
 
             let packet = Packet {
@@ -1238,8 +1238,8 @@ fn extract_attribute(events: &[AbciEvent], event_type: &str, key: &str) -> Resul
 
 fn get_attribute(tags: &[EventAttribute], key: &str) -> Result<String> {
     for tag in tags {
-        if tag.key == key {
-            return Ok(tag.value.to_string());
+        if tag.key_str()? == key {
+            return Ok(tag.value_str()?.to_string());
         }
     }
 
