@@ -7,43 +7,43 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.79"
-async-trait = "0.1.77"
-bech32 = "0.9.1"
-chrono = { version = "0.4.31", default-features = false, features = ["serde"] }
-ed25519-dalek = { version = "2.1.0", features = ["serde"] }
+anyhow = "1.0.97"
+async-trait = "0.1.87"
+bech32 = "0.11.0"
+chrono = { version = "0.4.40", default-features = false, features = ["serde"] }
+ed25519-dalek = { version = "2.1.1", features = ["serde"] }
 hex = { version = "0.4.3", features = ["serde"] }
-ibc-proto = "0.41.0"
-k256 = { version = "0.13.2", features = ["ecdsa"] }
-num-rational = { version = "0.4.1", features = ["serde"] }
-primitive-types = { version = "0.12.2", features = ["serde"] }
-prost = "0.12.3"
-prost-types = "0.12.3"
-rand = "0.8.5"
-regex = "1.10.2"
+ibc-proto = "0.51.1"
+k256 = { version = "0.13.4", features = ["ecdsa"] }
+num-rational = { version = "0.4.2", features = ["serde"] }
+primitive-types = { version = "0.13.1", features = ["serde"] }
+prost = "0.13.5"
+prost-types = "0.13.5"
+rand = "0.9.0"
+regex = "1.11.1"
 ripemd = "0.1.3"
-rust_decimal = "1.33.1"
-serde = { version = "1.0.195", features = ["derive"] }
-serde_json = "1.0.111"
+rust_decimal = "1.36.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 sha2 = "0.10.8"
 sha3 = { version = "0.10.8", optional = true }
-sqlx = { version = "0.7.3", features = [
+sqlx = { version = "0.8.3", features = [
     "json",
     "macros",
     "runtime-tokio-rustls",
     "sqlite",
     "chrono",
 ] }
-tendermint = "0.40.0"
-tendermint-light-client = { version = "0.40.0", features = ["rust-crypto"] }
-tendermint-rpc = { version = "0.40.0", features = ["http-client"] }
-time = "0.3.34"
-tokio = { version = "1.35.1", features = ["sync"] }
-tonic = { version = "0.10.2", features = ["tls", "tls-roots"] }
+tendermint = "0.40.1"
+tendermint-light-client = { version = "0.40.1", features = ["rust-crypto"] }
+tendermint-rpc = { version = "0.40.1", features = ["http-client"] }
+time = "0.3.39"
+tokio = { version = "1.44.0", features = ["sync"] }
+tonic = { version = "0.12.3", features = ["tls", "tls-roots"] }
 urlencoding = "2.1.3"
 
 [build-dependencies]
-tonic-build = "0.10.2"
+tonic-build = "0.12.3"
 
 [features]
 default = []

@@ -189,9 +189,9 @@ pub async fn msg_create_tendermint_client(
     let client_state = TendermintClientState {
         chain_id: chain.id.to_string(),
         trust_level,
-        trusting_period: Some(chain.config.trusting_period.into()),
+        trusting_period: Some(chain.config.trusting_period.try_into()?),
         unbonding_period,
-        max_clock_drift: Some(chain.config.max_clock_drift.into()),
+        max_clock_drift: Some(chain.config.max_clock_drift.try_into()?),
         frozen_height: Some(Height::zero()),
         latest_height: Some(latest_height),
         proof_specs: proof_specs(),
@@ -302,6 +302,7 @@ pub async fn msg_channel_open_init(
             }),
             connection_hops: vec![solo_machine_connection_id.to_string()],
             version: "ics20-1".to_string(),
+            upgrade_sequence: 0,
         }),
         signer: signer.to_account_address()?,
     };
@@ -606,6 +607,7 @@ fn build_auth_info(
         granter: "".to_owned(),
     };
 
+    #[allow(deprecated)]
     Ok(AuthInfo {
         signer_infos: vec![signer_info],
         fee: Some(fee),

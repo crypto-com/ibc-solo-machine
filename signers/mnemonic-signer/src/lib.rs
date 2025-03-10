@@ -115,9 +115,10 @@ impl Signer for MnemonicSigner {
             AddressAlgo::EthSecp256k1 => {
                 let (signature, recovery_id) = signing_key.sign_recoverable(message.as_ref())?;
 
-                let mut buf = Vec::with_capacity(signature.encoded_len() + 1);
-                buf.extend(signature.to_bytes());
+                let mut buf = signature.to_bytes().to_vec();
                 buf.push(recovery_id.to_byte());
+
+                buf.shrink_to_fit();
 
                 Ok(buf)
             }

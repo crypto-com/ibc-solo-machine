@@ -1002,6 +1002,7 @@ async fn channel_open_try<'e>(
         }),
         connection_hops: vec![tendermint_connection_id.to_string()],
         version: "ics20-1".to_string(),
+        upgrade_sequence: 0,
     };
 
     ibc_handler::add_channel(executor, port_id, &channel_id, &channel).await?;

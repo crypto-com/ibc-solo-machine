@@ -3,7 +3,7 @@ use std::{convert::TryFrom, ops::Deref, str::FromStr};
 
 use anyhow::{ensure, Error};
 use ibc_proto::ibc::core::commitment::v1::MerklePrefix;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -156,7 +156,7 @@ pub struct Identifier(String);
 
 impl Identifier {
     pub fn generate(prefix: &str, suffix_len: usize) -> Result<Self, Error> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let suffix: String = std::iter::repeat(())
             .map(|()| rng.sample(Alphanumeric))
