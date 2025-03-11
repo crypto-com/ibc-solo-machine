@@ -13,8 +13,8 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, ensure, Error, Result};
-use bech32::{ToBase32, Variant};
+use anyhow::{anyhow, ensure, Context, Error, Result};
+use bech32::{Bech32, Hrp};
 use ibc_proto::{
     cosmos::{
         crypto::{
@@ -105,8 +105,11 @@ impl PublicKey {
     }
 
     pub fn account_address(&self, prefix: &str) -> Result<String> {
-        bech32::encode(prefix, self.address_bytes()?.to_base32(), Variant::Bech32)
-            .map_err(Into::into)
+        bech32::encode::<Bech32>(
+            Hrp::parse(prefix).context("invalid hrp for account address")?,
+            &self.address_bytes()?,
+        )
+        .map_err(Into::into)
     }
 
     pub fn verify_signature(&self, message: &[u8], signature_data: &SignatureData) -> Result<()> {

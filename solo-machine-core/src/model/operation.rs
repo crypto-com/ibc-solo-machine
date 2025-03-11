@@ -58,7 +58,7 @@ pub struct RawOperation {
 
 impl From<Operation> for RawOperation {
     fn from(op: Operation) -> Self {
-        let amount_bytes: [u8; 32] = op.amount.into();
+        let amount_bytes: [u8; 32] = op.amount.to_big_endian();
 
         Self {
             id: op.id,
@@ -92,7 +92,7 @@ impl TryFrom<RawOperation> for Operation {
             request_id: op.request_id,
             address: op.address,
             denom: op.denom.parse()?,
-            amount: amount_bytes.into(),
+            amount: U256::from_big_endian(&amount_bytes),
             operation_type: op.operation_type.0,
             transaction_hash: op.transaction_hash,
             created_at: op.created_at,
@@ -136,7 +136,7 @@ pub async fn add_operation<'e>(
 ) -> Result<()> {
     let operation_type = Json(operation_type);
 
-    let amount_bytes: [u8; 32] = amount.into();
+    let amount_bytes: [u8; 32] = amount.to_big_endian();
 
     let rows_affected = sqlx::query(
         "INSERT INTO operations (request_id, address, denom, amount, operation_type, transaction_hash) VALUES ($1, $2, $3, $4, $5, $6)",

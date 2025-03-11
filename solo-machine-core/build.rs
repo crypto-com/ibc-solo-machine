@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "::ibc_proto::ibc::core::channel::v1",
         )
         .build_server(false)
-        .compile(&files, &["proto"])?;
+        .compile_protos(&files, &["proto"])?;
 
     Ok(())
 }
