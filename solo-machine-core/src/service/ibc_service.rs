@@ -716,8 +716,8 @@ impl IbcService {
     pub async fn history(
         &self,
         signer: impl ToPublicKey,
-        limit: u32,
-        offset: u32,
+        limit: i32,
+        offset: i32,
     ) -> Result<Vec<Operation>> {
         let account_address = signer.to_account_address()?;
         operation::get_operations(&self.db_pool, &account_address, limit, offset).await

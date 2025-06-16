@@ -82,8 +82,8 @@ pub async fn add_chain_key<'e>(
 pub async fn get_chain_keys<'e>(
     executor: impl Executor<'e, Database = Db>,
     chain_id: &ChainId,
-    limit: u32,
-    offset: u32,
+    limit: i32,
+    offset: i32,
 ) -> Result<Vec<ChainKey>> {
     let chain_keys: Vec<RawChainKey> = sqlx::query_as(
         "SELECT * FROM chain_keys WHERE chain_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3",

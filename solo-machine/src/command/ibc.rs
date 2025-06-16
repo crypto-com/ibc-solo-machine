@@ -127,9 +127,9 @@ pub enum IbcCommand {
     /// Check history of operations on solo machine
     History {
         #[structopt(long, default_value = "10")]
-        limit: u32,
+        limit: i32,
         #[structopt(long, default_value)]
-        offset: u32,
+        offset: i32,
     },
 }
 

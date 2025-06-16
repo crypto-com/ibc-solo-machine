@@ -180,8 +180,8 @@ where
     ) -> Result<Response<QueryHistoryResponse>, Status> {
         let request = request.into_inner();
 
-        let limit = request.limit.unwrap_or(10);
-        let offset = request.offset.unwrap_or(0);
+        let limit = request.limit.unwrap_or(10) as i32;
+        let offset = request.offset.unwrap_or(0) as i32;
 
         let history = self
             .core_service

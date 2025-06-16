@@ -129,9 +129,9 @@ pub enum ChainCommand {
     GetPublicKeys {
         chain_id: ChainId,
         #[structopt(long, default_value = "10")]
-        limit: u32,
+        limit: i32,
         #[structopt(long, default_value)]
-        offset: u32,
+        offset: i32,
     },
     /// Returns the final denom of a token on solo machine after sending it on given chain
     GetIbcDenom {

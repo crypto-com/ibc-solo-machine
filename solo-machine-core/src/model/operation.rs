@@ -164,8 +164,8 @@ pub async fn add_operation<'e>(
 pub async fn get_operations<'e>(
     executor: impl Executor<'e, Database = Db>,
     address: &str,
-    limit: u32,
-    offset: u32,
+    limit: i32,
+    offset: i32,
 ) -> Result<Vec<Operation>> {
     let raw: Vec<RawOperation> = sqlx::query_as(
         "SELECT * FROM operations WHERE address = $1 ORDER BY id DESC LIMIT $2 OFFSET $3",
