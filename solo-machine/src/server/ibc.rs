@@ -180,14 +180,10 @@ where
     ) -> Result<Response<QueryHistoryResponse>, Status> {
         let request = request.into_inner();
 
-        let limit = request.limit.unwrap_or(10) as i32;
-        let offset = request.offset.unwrap_or(0) as i32;
-
-        if limit < 0 || offset < 0 {
-            return Err(Status::invalid_argument(
-                "`limit` and `offset` must be non-negative",
-            ));
-        }
+        let limit = i32::try_from(request.limit.unwrap_or(10))
+            .or(Err(Status::invalid_argument("invalid `limit`")))?;
+        let offset = i32::try_from(request.offset.unwrap_or(0))
+            .or(Err(Status::invalid_argument("invalid `offset`")))?;
 
         let history = self
             .core_service
