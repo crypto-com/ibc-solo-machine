@@ -1,6 +1,6 @@
 use std::{io::Write, time::Duration};
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use cli_table::{format::Justify, print_stdout, Cell, Row, RowStruct, Style, Table};
 use humantime::format_duration;
 use num_rational::Ratio;
@@ -330,6 +330,10 @@ impl ChainCommand {
                 limit,
                 offset,
             } => {
+                if limit < 0 || offset < 0 {
+                    return Err(anyhow!("`limit` and `offset` must be non-negative"));
+                }
+
                 let keys = chain_service
                     .get_public_keys(chain_id, limit, offset)
                     .await?;

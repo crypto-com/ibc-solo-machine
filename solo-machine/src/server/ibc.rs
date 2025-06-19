@@ -183,6 +183,12 @@ where
         let limit = request.limit.unwrap_or(10) as i32;
         let offset = request.offset.unwrap_or(0) as i32;
 
+        if limit < 0 || offset < 0 {
+            return Err(Status::invalid_argument(
+                "`limit` and `offset` must be non-negative",
+            ));
+        }
+
         let history = self
             .core_service
             .history(&self.signer, limit, offset)
