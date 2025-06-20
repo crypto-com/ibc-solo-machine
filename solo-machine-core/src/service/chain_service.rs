@@ -88,8 +88,8 @@ impl ChainService {
     pub async fn get_public_keys(
         &self,
         chain_id: &ChainId,
-        limit: u32,
-        offset: u32,
+        limit: i32,
+        offset: i32,
     ) -> Result<Vec<ChainKey>> {
         chain_keys::get_chain_keys(&self.db_pool, chain_id, limit, offset).await
     }

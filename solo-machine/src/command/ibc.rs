@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use cli_table::{
     format::Justify, print_stdout, Cell, Color, ColorChoice, Row, RowStruct, Style, Table,
 };
@@ -209,6 +209,8 @@ impl IbcCommand {
                     .await
             }
             Self::History { limit, offset } => {
+                let limit = i32::try_from(limit).or(Err(anyhow!("invalid `limit`")))?;
+                let offset = i32::try_from(offset).or(Err(anyhow!("invalid `offset`")))?;
                 let history = ibc_service.history(signer, limit, offset).await?;
 
                 match output {
