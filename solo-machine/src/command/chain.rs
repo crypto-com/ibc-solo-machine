@@ -129,9 +129,9 @@ pub enum ChainCommand {
     GetPublicKeys {
         chain_id: ChainId,
         #[structopt(long, default_value = "10")]
-        limit: i32,
+        limit: u32,
         #[structopt(long, default_value)]
-        offset: i32,
+        offset: u32,
     },
     /// Returns the final denom of a token on solo machine after sending it on given chain
     GetIbcDenom {
@@ -330,9 +330,10 @@ impl ChainCommand {
                 limit,
                 offset,
             } => {
-                if limit < 0 || offset < 0 {
-                    return Err(anyhow!("`limit` and `offset` must be non-negative"));
-                }
+                let limit = i32::try_from(limit)
+                    .or(Err(anyhow!("invalid `limit`")))?;
+                let offset = i32::try_from(offset)
+                    .or(Err(anyhow!("invalid `offset`")))?;
 
                 let keys = chain_service
                     .get_public_keys(chain_id, limit, offset)

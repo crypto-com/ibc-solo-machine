@@ -127,9 +127,9 @@ pub enum IbcCommand {
     /// Check history of operations on solo machine
     History {
         #[structopt(long, default_value = "10")]
-        limit: i32,
+        limit: u32,
         #[structopt(long, default_value)]
-        offset: i32,
+        offset: u32,
     },
 }
 
@@ -209,9 +209,10 @@ impl IbcCommand {
                     .await
             }
             Self::History { limit, offset } => {
-                if limit < 0 || offset < 0 {
-                    return Err(anyhow!("`limit` and `offset` must be non-negative"));
-                }
+                let limit = i32::try_from(limit)
+                    .or(Err(anyhow!("invalid `limit`")))?;
+                let offset = i32::try_from(offset)
+                    .or(Err(anyhow!("invalid `offset`")))?;
                 let history = ibc_service.history(signer, limit, offset).await?;
 
                 match output {
