@@ -330,10 +330,8 @@ impl ChainCommand {
                 limit,
                 offset,
             } => {
-                let limit = i32::try_from(limit)
-                    .or(Err(anyhow!("invalid `limit`")))?;
-                let offset = i32::try_from(offset)
-                    .or(Err(anyhow!("invalid `offset`")))?;
+                let limit = i32::try_from(limit).or(Err(anyhow!("invalid `limit`")))?;
+                let offset = i32::try_from(offset).or(Err(anyhow!("invalid `offset`")))?;
 
                 let keys = chain_service
                     .get_public_keys(chain_id, limit, offset)

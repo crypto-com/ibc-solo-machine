@@ -209,10 +209,8 @@ impl IbcCommand {
                     .await
             }
             Self::History { limit, offset } => {
-                let limit = i32::try_from(limit)
-                    .or(Err(anyhow!("invalid `limit`")))?;
-                let offset = i32::try_from(offset)
-                    .or(Err(anyhow!("invalid `offset`")))?;
+                let limit = i32::try_from(limit).or(Err(anyhow!("invalid `limit`")))?;
+                let offset = i32::try_from(offset).or(Err(anyhow!("invalid `offset`")))?;
                 let history = ibc_service.history(signer, limit, offset).await?;
 
                 match output {
